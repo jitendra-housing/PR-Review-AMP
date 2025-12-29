@@ -1,0 +1,15 @@
+# Temporary directories
+.temp/
+
+# Review artifacts
+review_comment.md
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
