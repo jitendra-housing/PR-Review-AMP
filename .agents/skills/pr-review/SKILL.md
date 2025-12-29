@@ -79,13 +79,14 @@ git diff --name-only BASE_SHA HEAD_SHA | cat -n
 
 **CRITICAL: Create a TODO checklist with ALL files before starting review:**
 
-Use `todo_write` to create a checklist item for EVERY file:
+Use `todo_write` to create a checklist item for EVERY file PLUS the GitHub posting step:
 ```json
 [
   {"id": "f1", "content": "Review: path/to/file1.swift", "status": "todo"},
   {"id": "f2", "content": "Review: path/to/file2.swift", "status": "todo"},
   {"id": "f3", "content": "Review: path/to/file3.xib", "status": "todo"},
-  ...
+  ...,
+  {"id": "post", "content": "Post review to GitHub PR", "status": "todo"}
 ]
 ```
 
@@ -474,6 +475,7 @@ This skill mimics how an experienced developer reviews code:
 - Get list of ALL changed files with `git diff --name-only`
 - Create todo_write checklist with EVERY file
 - Number them sequentially (f1, f2, f3...)
+- **ALWAYS add final TODO: Post review to GitHub PR**
 - All start with status "todo"
 
 **Step 2: Get oriented**
@@ -516,11 +518,13 @@ This skill mimics how an experienced developer reviews code:
 - Show you understand the context
 - Prioritize issues appropriately
 
-**Step 8: Post review to GitHub (optional)**
+**Step 8: Post review to GitHub (MANDATORY)**
+- Mark "Post review to GitHub PR" as in-progress
 - Save formatted review to `review_comment.md`
-- Use `gh pr comment PR_NUMBER --body-file review_comment.md`
+- Use `gh pr comment PR_NUMBER --repo OWNER/REPO --body-file review_comment.md`
 - Verify comment posted successfully
 - Clean up review file
+- Mark "Post review to GitHub PR" as completed
 
 ### Use the Oracle Tool
 
@@ -568,6 +572,7 @@ todo_write:
 - f2: Review: src/middleware/auth.js (status: todo)
 - f3: Review: src/routes/auth.js (status: todo)
 - f4: Review: tests/auth.test.js (status: todo)
+- post: Post review to GitHub PR (status: todo)
 ```
 
 **Step 2: Review file by file**
@@ -621,6 +626,9 @@ Comprehensive review with 3 HIGH and 2 MEDIUM issues, each with:
 
 **Step 5: Post to GitHub**
 ```bash
+# Mark as in-progress
+todo_write: mark "post" as "in-progress"
+
 # Save review to file
 cat > review_comment.md << 'EOF'
 # 🔍 PR Review: Add Authentication
@@ -632,10 +640,14 @@ cat > review_comment.md << 'EOF'
 EOF
 
 # Post comment
-gh pr comment 456 --body-file review_comment.md
+gh pr comment 456 --repo owner/repo --body-file review_comment.md
 
 # Success message
 echo "✅ Review posted to PR #456"
+
+# Cleanup and mark complete
+rm -f review_comment.md
+todo_write: mark "post" as "completed"
 ```
 
 This is how a senior developer reviews - with full context and system understanding.
