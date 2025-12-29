@@ -70,55 +70,113 @@ git checkout pr-PR_NUMBER
 
 **IMPORTANT:** You are now on the feature branch with the full codebase context.
 
-### 4. Get List of Changed Files
+### 4. Get List of Changed Files and Create Checklist
 
-Generate list of files changed in this PR:
+Generate numbered list of all files changed in this PR:
 ```bash
-git diff --name-only BASE_SHA HEAD_SHA
+git diff --name-only BASE_SHA HEAD_SHA | cat -n
 ```
 
-Also get the diff for reference:
+**CRITICAL: Create a TODO checklist with ALL files before starting review:**
+
+Use `todo_write` to create a checklist item for EVERY file:
+```json
+[
+  {"id": "f1", "content": "Review: path/to/file1.swift", "status": "todo"},
+  {"id": "f2", "content": "Review: path/to/file2.swift", "status": "todo"},
+  {"id": "f3", "content": "Review: path/to/file3.xib", "status": "todo"},
+  ...
+]
+```
+
+Also generate the diff for reference:
 ```bash
 git diff BASE_SHA HEAD_SHA > pr_diff.txt
 ```
 
-### 5. Review Files Like a Senior Developer
+### 5. Review EVERY File One by One
 
-For EACH changed file, perform comprehensive analysis:
+**DO NOT SKIP ANY FILES.** Review all files systematically:
 
-#### a. Read the Full File
+**For EACH file in the checklist:**
 
-Read the complete file from the feature branch (not just the diff):
-```bash
-# You're on the feature branch, so just read the file
-cat path/to/changed/file.js
-```
+a. **Mark file as in-progress**:
+   ```bash
+   todo_write # update that file to "in-progress"
+   ```
 
-#### b. Understand the Context
+b. **Read the complete file** from the feature branch:
+   ```bash
+   cat path/to/file
+   # or use Read tool
+   ```
 
-- **Read imports/dependencies**: If the file imports other modules, read those files too
-- **Read related files**: Check parent classes, interfaces, types, utility functions
-- **Understand the architecture**: How does this file fit into the larger system?
+c. **Analyze based on file type:**
 
-Example:
-```javascript
-// If reviewing src/auth/login.js that imports:
-import { validateUser } from '../utils/validator';
-import { createToken } from './jwt';
+**Swift/Kotlin/Java Files (.swift, .kt, .java):**
+   - Read entire file with full context
+   - Check for:
+     - Thread safety (async operations, shared state)
+     - Memory leaks (retain cycles, weak references)
+     - Force unwraps and optional handling
+     - Error handling completeness
+     - API usage patterns
+     - Delegate patterns and memory management
+   - Read imported files for context
+   - Check if changes follow existing patterns
 
-// Also read:
-// - src/utils/validator.js (to understand validation logic)
-// - src/auth/jwt.js (to understand token creation)
-```
+**UI Files (.xib, .storyboard, .xml):**
+   - Check for constraint conflicts
+   - Verify outlet connections are valid
+   - Check for accessibility labels
+   - Ensure UI elements have proper identifiers
+   - Look for hardcoded sizes vs adaptive layouts
 
-#### c. Analyze the Changes Against Full Context
+**View Files (.swift for UIView subclasses, .jsx, .vue):**
+   - Check delegate/callback patterns
+   - Verify proper initialization
+   - Check for UI updates on main thread
+   - Look for accessibility support
+   - Verify proper cleanup in deinit/componentWillUnmount
 
-Compare what changed (from diff) with your understanding of:
-- The complete file content
-- Related files and dependencies
-- The overall system architecture
+**ViewModel/Presenter Files:**
+   - Check business logic correctness
+   - Verify error handling
+   - Check for proper separation of concerns
+   - Look for testability issues
+   - Verify Observable/binding patterns
 
-#### d. Review Focus Areas
+**Model/Entity Files (.swift, .kt, .ts):**
+   - Check Codable/Serializable implementation
+   - Verify field types and optionality
+   - Check for data validation
+   - Look for migration impacts
+
+**Generated Files:**
+   - Quick scan to ensure generation is correct
+   - Don't deep review auto-generated code
+   - Flag if manual changes were made to generated files
+
+**Resource Files (.json, .strings, .xml):**
+   - Check for syntax errors
+   - Verify no duplicate keys
+   - Check for missing translations
+   - Ensure proper formatting
+
+**Configuration Files (project.pbxproj, build.gradle):**
+   - Check for unintended changes
+   - Verify new files are properly added
+   - Check for dependency version changes
+   - Flag any unusual modifications
+
+d. **Mark file as completed**:
+   ```bash
+   todo_write # update that file to "completed"
+   ```
+
+e. **Move to next file** - Repeat until ALL files reviewed
+
+#### Review Focus Areas for Code Files
 
 **Security (Critical Priority):**
 - SQL injection, XSS, CSRF vulnerabilities
@@ -161,9 +219,18 @@ Compare what changed (from diff) with your understanding of:
 - Improper async/await usage
 - Resource cleanup (closing connections, files, etc.)
 
-### 6. Generate Structured Review Output
+### 6. Verify All Files Reviewed
 
-After analyzing all files with full context, create a comprehensive review.
+Before generating output, **verify checklist is 100% complete**:
+```bash
+todo_read # Check all files are marked "completed"
+```
+
+If any files are still "todo" or "in-progress", **continue reviewing them**.
+
+### 7. Generate Structured Review Output
+
+After analyzing **ALL files** with full context, create a comprehensive review.
 
 Output format (structured JSON for programmatic use):
 
@@ -215,7 +282,20 @@ Output format (structured JSON for programmatic use):
 - **Be specific**: Reference exact function names, variable names, patterns you saw
 - If no issues: `{"tool":"amp","version":"0.1","issues":[]}`
 
-### 7. Format Human-Readable Review
+## File Review Summary
+
+Include a summary of all files reviewed:
+
+```markdown
+## Files Reviewed: 30/30 ✅
+
+**Swift Files (13):** All reviewed
+**UI Files (7):** All reviewed  
+**Resource Files (8):** All reviewed
+**Configuration (2):** All reviewed
+```
+
+### 8. Format Human-Readable Review
 
 Present findings like a senior developer would in a PR review:
 
@@ -248,7 +328,7 @@ Severity indicators:
 - 🟡 **MEDIUM** - Performance issues, missing tests, code quality problems  
 - 🟢 **LOW** - Code style, minor refactoring, documentation improvements
 
-### 8. Cleanup
+### 9. Cleanup
 
 **ALWAYS cleanup the temporary directory**, even if errors occur:
 
@@ -333,40 +413,59 @@ Present the review in this structured format:
 
 This skill mimics how an experienced developer reviews code:
 
-1. **Checkout the feature branch** - Work with the actual code, not just diffs
-2. **Read complete files** - Understand the full context, not fragments
-3. **Follow the imports** - Read dependencies to understand integration points
-4. **Understand the system** - Know how pieces fit together
-5. **Think about edge cases** - What could go wrong?
-6. **Consider maintainability** - Will the next developer understand this?
+1. **Create a checklist FIRST** - Use todo_write to track ALL files
+2. **Review EVERY file** - No exceptions, no shortcuts
+3. **Checkout the feature branch** - Work with the actual code, not just diffs
+4. **Read complete files** - Understand the full context, not fragments
+5. **Follow the imports** - Read dependencies to understand integration points
+6. **Mark progress** - Update todo as you complete each file
+7. **Verify completion** - Check todo_read before finalizing review
+8. **Think about edge cases** - What could go wrong?
+9. **Consider maintainability** - Will the next developer understand this?
 
 ### Analysis Workflow
 
-**Step 1: Get oriented**
+**Step 1: Setup checklist**
+- Get list of ALL changed files with `git diff --name-only`
+- Create todo_write checklist with EVERY file
+- Number them sequentially (f1, f2, f3...)
+- All start with status "todo"
+
+**Step 2: Get oriented**
 - Read the PR description (from GitHub API)
 - Look at the diff to see what changed
-- Identify the core files being modified
+- Identify the core files and their relationships
 
-**Step 2: Deep dive on each file**
+**Step 3: Review files systematically**
+- Start with file #1 in checklist
+- Mark it "in-progress" with todo_write
 - Read the FULL file from the feature branch
 - Understand what it does and why it exists
 - Check imports - read those files too if they're relevant
-- Look for patterns in how the file is structured
+- Analyze based on file type (Swift/UI/Model/etc)
+- Mark it "completed" with todo_write
+- Move to next file
+- **Repeat for ALL files - no exceptions**
 
-**Step 3: Cross-reference**
+**Step 4: Cross-reference between files**
 - If reviewing a database model, check the migration files
 - If reviewing an API endpoint, check the tests
 - If reviewing authentication, check where it's used
 - If there are config changes, check environment setup
 
-**Step 4: Think critically**
+**Step 5: Verify completion**
+- Run todo_read to check all files are "completed"
+- If any files remain "todo" or "in-progress", review them now
+- Don't skip any files
+
+**Step 6: Think critically**
 - What security issues could this introduce?
 - Are there tests? Are they sufficient?
 - Could this perform poorly at scale?
 - Is this code maintainable?
 - Does it follow the project's conventions?
 
-**Step 5: Be constructive**
+**Step 7: Be constructive**
 - Don't just point out problems - suggest solutions
 - Reference existing patterns in the codebase
 - Show you understand the context
@@ -409,17 +508,22 @@ export GITHUB_TOKEN="ghp_your_token_here"
 
 ## Example Review Process
 
-### Scenario: Reviewing Authentication PR
+### Scenario: Reviewing Authentication PR (4 files)
 
-**Changed files:**
-- `src/auth/jwt.js` (new file)
-- `src/middleware/auth.js` (modified)
-- `src/routes/auth.js` (new file)
-- `tests/auth.test.js` (new file)
+**Step 1: Create checklist**
+```
+todo_write:
+- f1: Review: src/auth/jwt.js (status: todo)
+- f2: Review: src/middleware/auth.js (status: todo)
+- f3: Review: src/routes/auth.js (status: todo)
+- f4: Review: tests/auth.test.js (status: todo)
+```
 
-**Review process:**
+**Step 2: Review file by file**
 
-1. **Read src/auth/jwt.js completely**
+**File 1/4: src/auth/jwt.js**
+1. Mark f1 as "in-progress"
+2. Read src/auth/jwt.js completely
    - See it creates/verifies JWT tokens
    - Notice hardcoded secret - 🔴 HIGH SECURITY ISSUE
    - Check imports: `jsonwebtoken` library
