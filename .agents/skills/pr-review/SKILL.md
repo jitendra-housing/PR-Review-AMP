@@ -328,31 +328,62 @@ Severity indicators:
 - 🟡 **MEDIUM** - Performance issues, missing tests, code quality problems  
 - 🟢 **LOW** - Code style, minor refactoring, documentation improvements
 
-### 9. Cleanup
+### 9. Post Review to GitHub (Optional)
+
+After generating the review, you can post it directly to the PR as a comment:
+
+**Save review to file:**
+```bash
+cat > review_comment.md << 'EOF'
+[Your formatted review content here]
+EOF
+```
+
+**Post to PR:**
+```bash
+gh pr comment PR_NUMBER --body-file review_comment.md
+```
+
+Or post with inline command:
+```bash
+gh pr comment PR_NUMBER --body "$(cat review_comment.md)"
+```
+
+**Example:**
+```bash
+# For PR #18617
+gh pr comment 18617 --body-file review_comment.md
+```
+
+**Note:** Ensure you have GitHub CLI authenticated and proper permissions to comment on the PR.
+
+### 10. Cleanup
 
 **ALWAYS cleanup the temporary directory**, even if errors occur:
 
 ```bash
 cd ../..
 rm -rf .temp
+rm -f review_comment.md  # Also cleanup review file
 ```
 
 Use try-finally pattern to ensure cleanup:
 ```bash
-trap 'cd ../..; rm -rf .temp' EXIT
+trap 'cd ../..; rm -rf .temp; rm -f review_comment.md' EXIT
 ```
 
 ## Output Format
 
-Present the review in this structured format:
+Present the review in this structured format (GitHub-compatible markdown):
 
 ```markdown
-# PR Review: [PR Title]
+# 🔍 PR Review: [PR Title]
 
-**Repository**: owner/repo
-**PR**: #123 | [View PR](https://github.com/owner/repo/pull/123)
-**Branch**: feature-branch → base-branch
-**Files Changed**: X files with Y additions and Z deletions
+**Repository**: `owner/repo`  
+**PR**: [#123](https://github.com/owner/repo/pull/123)  
+**Branch**: `feature-branch` → `base-branch`  
+**Files Changed**: X files with Y additions and Z deletions  
+**Reviewed by**: Amp Code Review Bot
 
 ---
 
@@ -471,6 +502,12 @@ This skill mimics how an experienced developer reviews code:
 - Show you understand the context
 - Prioritize issues appropriately
 
+**Step 8: Post review to GitHub (optional)**
+- Save formatted review to `review_comment.md`
+- Use `gh pr comment PR_NUMBER --body-file review_comment.md`
+- Verify comment posted successfully
+- Clean up review file
+
 ### Use the Oracle Tool
 
 For complex reviews involving:
@@ -508,7 +545,7 @@ export GITHUB_TOKEN="ghp_your_token_here"
 
 ## Example Review Process
 
-### Scenario: Reviewing Authentication PR (4 files)
+### Scenario: Reviewing PR #456 - Authentication Implementation (4 files)
 
 **Step 1: Create checklist**
 ```
@@ -567,5 +604,24 @@ Comprehensive review with 3 HIGH and 2 MEDIUM issues, each with:
 - Context about what other files were reviewed
 - Concrete suggestions based on existing codebase patterns
 - Understanding of how the pieces fit together
+
+**Step 5: Post to GitHub**
+```bash
+# Save review to file
+cat > review_comment.md << 'EOF'
+# 🔍 PR Review: Add Authentication
+
+**Repository**: `owner/repo`
+**PR**: [#456](https://github.com/owner/repo/pull/456)
+...
+[Full review content]
+EOF
+
+# Post comment
+gh pr comment 456 --body-file review_comment.md
+
+# Success message
+echo "✅ Review posted to PR #456"
+```
 
 This is how a senior developer reviews - with full context and system understanding.
