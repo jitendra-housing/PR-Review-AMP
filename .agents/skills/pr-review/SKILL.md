@@ -527,33 +527,42 @@ todo_write:
    - See it creates/verifies JWT tokens
    - Notice hardcoded secret - 🔴 HIGH SECURITY ISSUE
    - Check imports: `jsonwebtoken` library
+3. Read config files: `config/index.js` - has dotenv
+4. Mark f1 as "completed"
 
-2. **Read config files to understand environment setup**
-   - Read `config/index.js` - has dotenv, can use env vars
-   - Suggest moving secret to `process.env.JWT_SECRET`
-
-3. **Read src/middleware/auth.js**
+**File 2/4: src/middleware/auth.js**
+1. Mark f2 as "in-progress"
+2. Read src/middleware/auth.js completely
    - See it uses jwt.verify from jwt.js
    - Notice no expiration check - 🔴 HIGH SECURITY ISSUE
    - Check error handling - missing for expired tokens
+3. Mark f2 as "completed"
 
-4. **Read src/routes/auth.js**
+**File 3/4: src/routes/auth.js**
+1. Mark f3 as "in-progress"
+2. Read src/routes/auth.js completely
    - Review login/logout endpoints
    - Check if passwords are validated properly
    - Look for password logging - found it! 🟡 MEDIUM ISSUE
+3. Cross-reference: Read `src/models/User.js`
+   - Found SQL injection - 🔴 HIGH SECURITY ISSUE
+4. Mark f3 as "completed"
 
-5. **Cross-reference with database layer**
-   - Read `src/models/User.js` to see how users are fetched
-   - Found SQL injection in login query - 🔴 HIGH SECURITY ISSUE
-   - Read `database/connection.js` - supports parameterized queries
-
-6. **Check test coverage**
-   - Read `tests/auth.test.js`
+**File 4/4: tests/auth.test.js**
+1. Mark f4 as "in-progress"
+2. Read tests/auth.test.js completely
    - Only tests happy path, no edge cases - 🟡 MEDIUM ISSUE
-   - Read `tests/api.test.js` to see existing test patterns
-   - Suggest following that pattern
+3. Read `tests/api.test.js` for comparison
+4. Mark f4 as "completed"
 
-**Result:** Comprehensive review with 3 HIGH and 2 MEDIUM issues, each with:
+**Step 3: Verify completion**
+```
+todo_read shows all 4/4 files "completed" ✅
+```
+
+**Step 4: Generate review**
+
+Comprehensive review with 3 HIGH and 2 MEDIUM issues, each with:
 - Specific file/line references
 - Context about what other files were reviewed
 - Concrete suggestions based on existing codebase patterns
