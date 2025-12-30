@@ -9,14 +9,14 @@ Analyzes GitHub pull requests using git diff and provides structured code review
 
 ## Capabilities
 
-- Clones repository to .temp/ directory
+- Uses repository in .temp/ directory (clones only if not exists)
 - Checks out the actual feature branch
 - Reads full files with complete code context (not just diffs)
 - Analyzes imports and dependencies for deeper understanding
 - Reviews like a senior developer with full codebase knowledge
 - Provides severity-tagged feedback (HIGH/MEDIUM/LOW)
 - Creates structured JSON output with file paths and line numbers
-- Automatically cleans up temporary files
+- Preserves .temp/ directory for reuse across reviews
 - Generates comprehensive review summary
 
 ## Usage
@@ -42,12 +42,22 @@ Extract from URL (e.g., `https://github.com/owner/repo/pull/123`):
 
 ### 2. Setup Temporary Directory
 
+**Check if repository already exists to avoid re-cloning:**
+
 ```bash
-mkdir -p .temp
-cd .temp
-git clone https://github.com/OWNER/REPO.git
-cd REPO
+# Only clone if repo doesn't exist
+if [ ! -d ".temp/REPO/.git" ]; then
+  mkdir -p .temp
+  cd .temp
+  # User will clone manually - DO NOT clone automatically
+  echo "Repository not found. Please clone manually."
+else
+  echo "Repository already exists, using existing clone"
+fi
+cd .temp/REPO
 ```
+
+**IMPORTANT:** Never remove .temp/ or the repository directory unless explicitly asked by the user.
 
 ### 3. Fetch PR Data and Checkout Feature Branch
 
@@ -95,24 +105,53 @@ Also generate the diff for reference:
 git diff BASE_SHA HEAD_SHA > pr_diff.txt
 ```
 
-### 5. Review EVERY File One by One
+### 5. Review EVERY File Using Sub-Agents
 
-**DO NOT SKIP ANY FILES.** Review all files systematically:
+**DO NOT SKIP ANY FILES.** Use parallel sub-agents for efficient review:
 
-**For EACH file in the checklist:**
+**Step 1: Group files into batches**
 
-a. **Mark file as in-progress**:
+Group files by category for parallel processing:
+- Swift/Kotlin/Java source files (batch size: 5-10 files)
+- UI files (.xib, .storyboard, .xml)
+- Resource files (strings, images, JSON)
+- Generated files (quick verification only)
+- Configuration files
+
+**Step 2: Launch sub-agents in parallel**
+
+For each batch, launch a Task sub-agent with:
+- List of files to review
+- Repository path
+- Base and head commit SHAs
+- Instructions on what to check
+
+**Example:**
+```
+Task 1: Review Swift files f1-f10
+Task 2: Review Swift files f11-f20
+Task 3: Review UI and resource files f21-f30
+Task 4: Review ViewModels f31-f38
+```
+
+**Step 3: Each sub-agent must:**
+
+a. **Mark each file as in-progress** before reviewing:
    ```bash
-   todo_write # update that file to "in-progress"
+   todo_write # update file status to "in-progress"
    ```
 
 b. **Read the complete file** from the feature branch:
    ```bash
-   cat path/to/file
-   # or use Read tool
+   Read tool with full file path
    ```
 
-c. **Analyze based on file type:**
+c. **Get the diff** to see what changed:
+   ```bash
+   git diff BASE_SHA HEAD_SHA -- path/to/file
+   ```
+
+d. **Analyze based on file type:**
 
 **Swift/Kotlin/Java Files (.swift, .kt, .java):**
    - Read entire file with full context
@@ -170,12 +209,29 @@ c. **Analyze based on file type:**
    - Check for dependency version changes
    - Flag any unusual modifications
 
-d. **Mark file as completed**:
+e. **Mark file as completed** after review:
    ```bash
-   todo_write # update that file to "completed"
+   todo_write # update file status to "completed"
    ```
 
-e. **Move to next file** - Repeat until ALL files reviewed
+f. **Return findings** to main agent with:
+   - File path
+   - Line numbers of issues
+   - Severity (HIGH/MEDIUM/LOW)
+   - Issue description
+   - Suggested fix
+   - Context (what other files were read)
+
+**Step 4: Main agent coordinates**
+
+The main agent:
+1. Launches multiple Task sub-agents in parallel (group files into 4-6 batches)
+2. Monitors progress via todo_read
+3. Collects findings from all sub-agents
+4. Compiles comprehensive review
+5. Posts to GitHub
+
+**Important:** Each sub-agent operates independently and updates the shared TODO checklist in real-time.
 
 #### Review Focus Areas for Code Files
 
@@ -366,18 +422,18 @@ gh pr comment 18617 --body-file review_comment.md
 
 ### 10. Cleanup
 
-**ALWAYS cleanup the temporary directory**, even if errors occur:
+**Only cleanup review file, preserve repository:**
 
 ```bash
-cd ../..
-rm -rf .temp
-rm -f review_comment.md  # Also cleanup review file
+rm -f review_comment.md  # Cleanup review file only
 ```
 
-Use try-finally pattern to ensure cleanup:
-```bash
-trap 'cd ../..; rm -rf .temp; rm -f review_comment.md' EXIT
-```
+**IMPORTANT:** 
+- DO NOT remove .temp/ directory
+- DO NOT remove repository directory
+- Only cleanup temporary review files (review_comment.md)
+- Repository is preserved for reuse across multiple PR reviews
+- Only remove .temp/ if user explicitly requests it
 
 ## Output Format
 
@@ -469,7 +525,7 @@ This skill mimics how an experienced developer reviews code:
 8. **Think about edge cases** - What could go wrong?
 9. **Consider maintainability** - Will the next developer understand this?
 
-### Analysis Workflow
+### Analysis Workflow (Using Sub-Agents)
 
 **Step 1: Setup checklist**
 - Get list of ALL changed files with `git diff --name-only`
@@ -482,41 +538,55 @@ This skill mimics how an experienced developer reviews code:
 - Read the PR description (from GitHub API)
 - Look at the diff to see what changed
 - Identify the core files and their relationships
+- Group files into logical batches (4-6 batches for parallel processing)
 
-**Step 3: Review files systematically**
-- Start with file #1 in checklist
-- Mark it "in-progress" with todo_write
-- Read the FULL file from the feature branch
-- Understand what it does and why it exists
-- Check imports - read those files too if they're relevant
-- Analyze based on file type (Swift/UI/Model/etc)
-- Mark it "completed" with todo_write
-- Move to next file
-- **Repeat for ALL files - no exceptions**
+**Step 3: Launch parallel sub-agents**
 
-**Step 4: Cross-reference between files**
-- If reviewing a database model, check the migration files
-- If reviewing an API endpoint, check the tests
-- If reviewing authentication, check where it's used
-- If there are config changes, check environment setup
+Create 4-6 Task sub-agents, each responsible for a batch of files:
 
-**Step 5: Verify completion**
-- Run todo_read to check all files are "completed"
-- If any files remain "todo" or "in-progress", review them now
-- Don't skip any files
+**Batch 1 (Task 1):** Source files 1-10
+```
+Task: Review files f1-f10 for PR #XXXXX
 
-**Step 6: Think critically**
-- What security issues could this introduce?
-- Are there tests? Are they sufficient?
-- Could this perform poorly at scale?
-- Is this code maintainable?
-- Does it follow the project's conventions?
+Files to review:
+- path/to/file1.swift (f1)
+- path/to/file2.swift (f2)
+...
 
-**Step 7: Be constructive**
-- Don't just point out problems - suggest solutions
-- Reference existing patterns in the codebase
-- Show you understand the context
-- Prioritize issues appropriately
+For EACH file:
+1. Update todo: mark file as "in-progress"
+2. Read full file from /path/to/repo
+3. Get diff: git diff BASE_SHA HEAD_SHA -- filepath
+4. Analyze for: force unwraps, memory leaks, threading, error handling
+5. Update todo: mark file as "completed"
+6. Return findings with file, line, severity, description, fix
+
+Base SHA: xxxxx
+Head SHA: yyyyy
+Repo path: /Users/.../housing-app
+```
+
+**Batch 2-6:** Similar tasks for remaining files
+
+**Step 4: Monitor progress in real-time**
+- Each sub-agent updates the shared TODO checklist
+- Use todo_read periodically to check progress
+- Watch for completion of all file reviews
+
+**Step 5: Collect findings from all sub-agents**
+- Aggregate all issues from sub-agent responses
+- Deduplicate similar issues
+- Organize by severity (HIGH/MEDIUM/LOW)
+
+**Step 6: Verify completion**
+- Run todo_read to ensure all files marked "completed"
+- If any files remain "todo" or "in-progress", investigate
+
+**Step 7: Generate comprehensive review**
+- Compile all findings from sub-agents
+- Add overall assessment
+- Calculate score
+- Format for GitHub
 
 **Step 8: Post review to GitHub (MANDATORY)**
 - Mark "Post review to GitHub PR" as in-progress
@@ -537,9 +607,10 @@ For complex reviews involving:
 Consult the oracle for deeper analysis before providing feedback.
 
 ### Error Handling
-1. **Always cleanup** - Remove .temp/ even if errors occur (use trap or try-finally)
+1. **Repository preservation** - Never remove .temp/ or repository (preserved for reuse)
 2. **Handle edge cases** - Empty PRs, deleted files, binary files
 3. **Validate data** - Check GitHub API responses before using them
+4. **Sub-agent failures** - If a sub-agent fails, main agent should review those files directly
 
 ## GitHub CLI Setup
 
@@ -563,68 +634,73 @@ export GITHUB_TOKEN="ghp_your_token_here"
 
 ## Example Review Process
 
-### Scenario: Reviewing PR #456 - Authentication Implementation (4 files)
+### Scenario: Reviewing PR #456 - Authentication Implementation (40 files)
 
 **Step 1: Create checklist**
 ```
 todo_write:
-- f1: Review: src/auth/jwt.js (status: todo)
-- f2: Review: src/middleware/auth.js (status: todo)
-- f3: Review: src/routes/auth.js (status: todo)
-- f4: Review: tests/auth.test.js (status: todo)
+- f1-f40: Review 40 files
 - post: Post review to GitHub PR (status: todo)
 ```
 
-**Step 2: Review file by file**
+**Step 2: Group into batches**
+- Batch 1: f1-f10 (auth core files)
+- Batch 2: f11-f20 (middleware files)
+- Batch 3: f21-f30 (route handlers)
+- Batch 4: f31-f40 (tests + config)
 
-**File 1/4: src/auth/jwt.js**
-1. Mark f1 as "in-progress"
-2. Read src/auth/jwt.js completely
-   - See it creates/verifies JWT tokens
-   - Notice hardcoded secret - 🔴 HIGH SECURITY ISSUE
-   - Check imports: `jsonwebtoken` library
-3. Read config files: `config/index.js` - has dotenv
-4. Mark f1 as "completed"
+**Step 3: Launch 4 parallel sub-agents**
 
-**File 2/4: src/middleware/auth.js**
-1. Mark f2 as "in-progress"
-2. Read src/middleware/auth.js completely
-   - See it uses jwt.verify from jwt.js
-   - Notice no expiration check - 🔴 HIGH SECURITY ISSUE
-   - Check error handling - missing for expired tokens
-3. Mark f2 as "completed"
-
-**File 3/4: src/routes/auth.js**
-1. Mark f3 as "in-progress"
-2. Read src/routes/auth.js completely
-   - Review login/logout endpoints
-   - Check if passwords are validated properly
-   - Look for password logging - found it! 🟡 MEDIUM ISSUE
-3. Cross-reference: Read `src/models/User.js`
-   - Found SQL injection - 🔴 HIGH SECURITY ISSUE
-4. Mark f3 as "completed"
-
-**File 4/4: tests/auth.test.js**
-1. Mark f4 as "in-progress"
-2. Read tests/auth.test.js completely
-   - Only tests happy path, no edge cases - 🟡 MEDIUM ISSUE
-3. Read `tests/api.test.js` for comparison
-4. Mark f4 as "completed"
-
-**Step 3: Verify completion**
+**Task 1 (Batch 1):**
 ```
-todo_read shows all 4/4 files "completed" ✅
+Review files f1-f10 for PR #456
+
+Files:
+- src/auth/jwt.js (f1)
+- src/auth/tokens.js (f2)
+... (8 more files)
+
+For each file:
+1. Mark as in-progress
+2. Read full file
+3. Get diff
+4. Analyze for security, errors, patterns
+5. Mark as completed
+6. Return issues found
+
+Repo: /path/to/repo
+Base SHA: abc123
+Head SHA: def456
 ```
 
-**Step 4: Generate review**
+**Task 2-4:** Similar for other batches
 
-Comprehensive review with 3 HIGH and 2 MEDIUM issues, each with:
-- Specific file/line references
-- Context about what other files were reviewed
-- Concrete suggestions based on existing codebase patterns
-- Understanding of how the pieces fit together
+**Step 4: Monitor real-time progress**
+```bash
+# User sees checklist updating live:
+✅ f1 completed
+✅ f2 completed
+⏳ f3 in-progress
+...
+```
 
-**Step 5: Post to GitHub**
+**Step 5: Collect findings**
+
+Sub-agent 1 returns:
+- f1: HIGH - Hardcoded JWT secret at line 34
+- f2: MEDIUM - Missing token expiration check
+
+Sub-agent 2 returns:
+- f15: HIGH - SQL injection vulnerability at line 67
+- f18: LOW - Inconsistent naming
+
+(Continue for all sub-agents)
+
+**Step 6: Generate comprehensive review**
+
+Main agent compiles all findings, deduplicates, formats for GitHub
+
+**Step 7: Post to GitHub**
 ```bash
 # Mark as in-progress
 todo_write: mark "post" as "in-progress"
@@ -645,9 +721,11 @@ gh pr comment 456 --repo owner/repo --body-file review_comment.md
 # Success message
 echo "✅ Review posted to PR #456"
 
-# Cleanup and mark complete
+# Only cleanup review file, NOT the repo
 rm -f review_comment.md
 todo_write: mark "post" as "completed"
 ```
+
+**Note:** Repository in .temp/ is preserved for future reviews. Never delete unless user explicitly requests.
 
 This is how a senior developer reviews - with full context and system understanding.
