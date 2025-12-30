@@ -80,12 +80,57 @@ git checkout pr-PR_NUMBER
 
 **IMPORTANT:** You are now on the feature branch with the full codebase context.
 
-### 4. Get List of Changed Files and Create Checklist
+### 4. Check Branch Sync Status
 
-Generate numbered list of all files changed in this PR:
+**CRITICAL**: Check if the feature branch is up-to-date with the base branch:
+
 ```bash
-git diff --name-only BASE_SHA HEAD_SHA | cat -n
+# Fetch latest base branch
+git fetch origin BASE_REF
+
+# Count commits behind
+BEHIND=$(git rev-list --count pr-PR_NUMBER..origin/BASE_REF)
+
+# Count commits ahead (PR changes)
+AHEAD=$(git rev-list --count origin/BASE_REF..pr-PR_NUMBER)
+
+echo "Behind: $BEHIND, Ahead: $AHEAD"
 ```
+
+**If BEHIND > 0**, add a comment to the PR:
+
+```bash
+gh pr comment PR_NUMBER --repo OWNER/REPO --body "⚠️ **Branch Sync Notice**
+
+This branch is **${BEHIND} commit(s) behind** the base branch (\`BASE_REF\`).
+
+Please sync your branch to ensure:
+- No merge conflicts
+- Latest changes from base are included
+- CI/tests run against current codebase
+
+**To sync:**
+\`\`\`bash
+git checkout HEAD_REF
+git fetch origin
+git merge origin/BASE_REF
+# Or use rebase: git rebase origin/BASE_REF
+git push
+\`\`\`"
+```
+
+**Store sync status** for inclusion in the review summary.
+
+### 5. Get List of Changed Files and Create Checklist
+
+**IMPORTANT**: Use three-dot diff to get ONLY the changes introduced by this PR:
+
+```bash
+# Use three-dot diff to compare against the common ancestor
+git diff --name-only origin/BASE_REF...pr-PR_NUMBER | cat -n
+```
+
+**DO NOT use `git diff BASE_SHA HEAD_SHA`** as it will include changes from other PRs merged to base.
 
 **CRITICAL: Create a TODO checklist with ALL files before starting review:**
 
@@ -102,10 +147,10 @@ Use `todo_write` to create a checklist item for EVERY file PLUS the GitHub posti
 
 Also generate the diff for reference:
 ```bash
-git diff BASE_SHA HEAD_SHA > pr_diff.txt
+git diff origin/BASE_REF...pr-PR_NUMBER > pr_diff.txt
 ```
 
-### 5. Review EVERY File Using Sub-Agents
+### 6. Review EVERY File Using Sub-Agents
 
 **DO NOT SKIP ANY FILES.** Use parallel sub-agents for efficient review:
 
@@ -276,7 +321,7 @@ The main agent:
 - Improper async/await usage
 - Resource cleanup (closing connections, files, etc.)
 
-### 6. Verify All Files Reviewed
+### 7. Verify All Files Reviewed
 
 Before generating output, **verify checklist is 100% complete**:
 ```bash
@@ -285,7 +330,7 @@ todo_read # Check all files are marked "completed"
 
 If any files are still "todo" or "in-progress", **continue reviewing them**.
 
-### 7. Generate Structured Review Output
+### 8. Generate Structured Review Output
 
 After analyzing **ALL files** with full context, create a comprehensive review.
 
@@ -352,7 +397,7 @@ Include a summary of all files reviewed:
 **Configuration (2):** All reviewed
 ```
 
-### 8. Format Human-Readable Review
+### 9. Format Human-Readable Review
 
 Present findings concisely and directly:
 
@@ -391,7 +436,7 @@ Severity indicators:
 - ✅ Issues Found (with severity levels)
 - ✅ Overall Assessment with Score out of 10
 
-### 9. Post Review to GitHub (Optional)
+### 10. Post Review to GitHub (Optional)
 
 After generating the review, you can post it directly to the PR as a comment:
 
@@ -420,7 +465,7 @@ gh pr comment 18617 --body-file review_comment.md
 
 **Note:** Ensure you have GitHub CLI authenticated and proper permissions to comment on the PR.
 
-### 10. Cleanup
+### 11. Cleanup
 
 **Only cleanup review file, preserve repository:**
 
@@ -445,6 +490,7 @@ Present the review in this structured format (GitHub-compatible markdown):
 **Repository**: `owner/repo`  
 **PR**: [#123](https://github.com/owner/repo/pull/123)  
 **Branch**: `feature-branch` → `base-branch`  
+**Branch Status**: ⚠️ X commits behind base | ✅ Up to date  
 **Files Changed**: X files with Y additions and Z deletions  
 **Reviewed by**: Amp Code Review Bot
 
@@ -534,13 +580,18 @@ This skill mimics how an experienced developer reviews code:
 - **ALWAYS add final TODO: Post review to GitHub PR**
 - All start with status "todo"
 
-**Step 2: Get oriented**
+**Step 2: Check branch sync status**
+- Check if feature branch is behind base branch
+- Post sync notice comment if needed
+- Store sync status for review header
+
+**Step 3: Get oriented**
 - Read the PR description (from GitHub API)
 - Look at the diff to see what changed
 - Identify the core files and their relationships
 - Group files into logical batches (4-6 batches for parallel processing)
 
-**Step 3: Launch parallel sub-agents**
+**Step 4: Launch parallel sub-agents**
 
 Create 4-6 Task sub-agents, each responsible for a batch of files:
 
@@ -568,27 +619,28 @@ Repo path: /Users/.../housing-app
 
 **Batch 2-6:** Similar tasks for remaining files
 
-**Step 4: Monitor progress in real-time**
+**Step 5: Monitor progress in real-time**
 - Each sub-agent updates the shared TODO checklist
 - Use todo_read periodically to check progress
 - Watch for completion of all file reviews
 
-**Step 5: Collect findings from all sub-agents**
+**Step 6: Collect findings from all sub-agents**
 - Aggregate all issues from sub-agent responses
 - Deduplicate similar issues
 - Organize by severity (HIGH/MEDIUM/LOW)
 
-**Step 6: Verify completion**
+**Step 7: Verify completion**
 - Run todo_read to ensure all files marked "completed"
 - If any files remain "todo" or "in-progress", investigate
 
-**Step 7: Generate comprehensive review**
+**Step 8: Generate comprehensive review**
 - Compile all findings from sub-agents
+- Include branch sync status in header
 - Add overall assessment
 - Calculate score
 - Format for GitHub
 
-**Step 8: Post review to GitHub (MANDATORY)**
+**Step 9: Post review to GitHub (MANDATORY)**
 - Mark "Post review to GitHub PR" as in-progress
 - Save formatted review to `review_comment.md`
 - Use `gh pr comment PR_NUMBER --repo OWNER/REPO --body-file review_comment.md`
