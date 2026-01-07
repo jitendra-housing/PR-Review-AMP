@@ -1,6 +1,14 @@
 # Temporary directories
 .temp/
 
+# Node modules
+node_modules/
+server/node_modules/
+
+# Environment files
+server/.env
+.env
+
 # Review artifacts
 review_comment.md
 

@@ -1,0 +1,14 @@
+{
+  "name": "amp-pr-review-automation",
+  "version": "1.0.0",
+  "description": "Automated PR reviews using Amp triggered by GitHub webhooks",
+  "scripts": {
+    "install": "cd server && npm install",
+    "start": "cd server && npm start",
+    "dev": "cd server && npm run dev",
+    "test-webhook": "./test-webhook.sh"
+  },
+  "keywords": ["amp", "pr-review", "github", "webhook"],
+  "author": "",
+  "license": "MIT"
+}

@@ -1,0 +1,47 @@
+diff --git a/ios/HomePageModule/HomePage/Presentation/ViewControllers/HomePageViewController+CVLayout.swift b/ios/HomePageModule/HomePage/Presentation/ViewControllers/HomePageViewController+CVLayout.swift
+index a2041369dc6..1f82e861bdb 100644
+--- a/ios/HomePageModule/HomePage/Presentation/ViewControllers/HomePageViewController+CVLayout.swift
++++ b/ios/HomePageModule/HomePage/Presentation/ViewControllers/HomePageViewController+CVLayout.swift
+@@ -20,7 +20,12 @@ extension HomePageViewController {
+             let showHeader = configuration.shouldShowHeader(in: section)
+             let showFooter = configuration.shouldShowFooter(in: section)
+             let numberOfItems = configuration.numberOfItems(in: section)
+-            let showDecoration = numberOfItems > 0 
++            let showDecoration = numberOfItems > 0
++            
++            // Return empty layout for sections with no items to prevent gaps on iOS 16
++            if numberOfItems == 0 {
++                return getDefaultLayout()
++            }
+             
+             switch section {
+             case .header:
+diff --git a/ios/HomePageModule/HomePage/Presentation/ViewControllers/HomePageViewController+SmartSuggestion.swift b/ios/HomePageModule/HomePage/Presentation/ViewControllers/HomePageViewController+SmartSuggestion.swift
+index 00117f1e6b7..a08ded772bc 100644
+--- a/ios/HomePageModule/HomePage/Presentation/ViewControllers/HomePageViewController+SmartSuggestion.swift
++++ b/ios/HomePageModule/HomePage/Presentation/ViewControllers/HomePageViewController+SmartSuggestion.swift
+@@ -146,13 +146,16 @@ extension HomePageViewController: SmartSuggestionHeaderViewDelegate {
+     }
+     
+     func didSmartSuggestionProgressBarChanged(section: HomePageSections, segmentIndex: Int) {
+-        if let sectionIndex = viewModel?.sections.firstIndex(where: { $0 == section }),
+-           segmentIndex >= 0,
+-           segmentIndex < collectionView.numberOfItems(inSection: sectionIndex) {
+-            
+-            collectionView.scrollToItem(at: IndexPath(item: segmentIndex, section: sectionIndex),
+-                                        at: .left,
+-                                        animated: true)
+-        }
++        guard let sectionIndex = viewModel?.sections.firstIndex(where: { $0 == section }),
++              segmentIndex >= 0,
++              segmentIndex < collectionView.numberOfItems(inSection: sectionIndex) else { return }
++        
++        // Only scroll if section is visible to prevent forced scrolling in iOS <17
++        let visibleSections = collectionView.indexPathsForVisibleItems.map { $0.section }
++        guard visibleSections.contains(sectionIndex) else { return }
++        
++        collectionView.scrollToItem(at: IndexPath(item: segmentIndex, section: sectionIndex),
++                                    at: .left,
++                                    animated: true)
+     }
+ }
