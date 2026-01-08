@@ -64,28 +64,55 @@ async function triggerAmpReview(prUrl) {
   }
   
   const projectRoot = path.resolve(__dirname, '..');
+  const isTestMode = process.env.TEST_MODE === 'true';
+  const useRag = process.env.USE_RAG !== 'false';
+  const skill = useRag ? 'pr-review-rag' : 'pr-review';
+  const model = (process.env.MODEL || 'sonnet').toLowerCase();
+  const modeFlag = model === 'sonnet' ? 'large' : 'smart';
+  const reviewCommand = `use ${skill} skill to review PR ${prUrl}`;
+  
   console.log('[AMP] Working directory:', projectRoot);
+  console.log(`[AMP] Mode: ${isTestMode ? 'TEST (interactive)' : 'PRODUCTION (background)'}`);
+  console.log(`[AMP] Skill: ${skill} (USE_RAG=${useRag})`);
+  console.log(`[AMP] Model: ${model} (--mode ${modeFlag})`);
   console.log('[AMP] -----------------------------------\n');
   
-  const amp = spawn('bash', ['-c', `printf "review PR ${prUrl}\\n" | amp --mode large`], {
-    cwd: projectRoot,
-    env: {
-      ...process.env,
-      GH_TOKEN: process.env.GITHUB_TOKEN
-    },
-    stdio: ['pipe', 'pipe', 'pipe']
-  });
-  
-  amp.stdout.on('data', (data) => {
-    process.stdout.write(data);
-  });
-  
-  amp.stderr.on('data', (data) => {
-    process.stderr.write(data);
-  });
-  
-  console.log('✓ Review process started\n');
-  return { success: true, message: 'Review started' };
+  if (isTestMode) {
+    console.log('[TEST MODE] Opening Amp session...');
+    console.log(`[TEST MODE] Command: ${reviewCommand}`);
+    console.log('[TEST MODE] You can interact with Amp directly in this terminal\n');
+    
+    const amp = spawn('bash', ['-c', `printf "${reviewCommand}\\n" | amp --mode ${modeFlag}`], {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        GH_TOKEN: process.env.GITHUB_TOKEN
+      },
+      stdio: 'inherit'
+    });
+    
+    return { success: true, message: 'Interactive session started' };
+  } else {
+    const amp = spawn('bash', ['-c', `printf "${reviewCommand}\\n" | amp --mode ${modeFlag}`], {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        GH_TOKEN: process.env.GITHUB_TOKEN
+      },
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+    
+    amp.stdout.on('data', (data) => {
+      process.stdout.write(data);
+    });
+    
+    amp.stderr.on('data', (data) => {
+      process.stderr.write(data);
+    });
+    
+    console.log('✓ Review process started\n');
+    return { success: true, message: 'Review started' };
+  }
 }
 
 app.post('/webhook', async (req, res) => {
