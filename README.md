@@ -5,10 +5,10 @@ Automated GitHub PR review system using Amp's PR review skill, triggered via Git
 ## Architecture
 
 ```
-GitHub PR → Webhook → Express Server (Your Machine/Dedicated Server) → Amp CLI → GitHub Comment
+GitHub PR → Webhook → Express Server → Amp CLI (pr-review skill) → GitHub Comment
 ```
 
-When you add a configured GitHub user as a reviewer on any PR, this system automatically triggers Amp to perform a comprehensive code review.
+When you add the configured GitHub user as a reviewer, this system automatically triggers Amp to perform a comprehensive code review.
 
 ## Quick Start (Local Testing)
 
@@ -95,96 +95,16 @@ Go to your repo → Settings → Webhooks → Add webhook:
 | `AMP_GITHUB_USERNAME` | GitHub username that triggers reviews | ✅ |
 | `PORT` | Server port (default: 3000) | ❌ |
 
-## Deployment to Dedicated Server
+## Production Deployment
 
-### Prerequisites
+For production deployment on a dedicated server:
+1. Clone repository and install dependencies
+2. Configure environment variables
+3. Setup as systemd service
+4. Configure nginx reverse proxy with SSL
+5. Update GitHub webhook URL
 
-- Ubuntu/Debian server with public IP
-- Node.js 18+ installed
-- Amp CLI installed
-- Domain/subdomain (optional but recommended)
-
-### Setup Steps
-
-1. **Clone repository:**
-   ```bash
-   git clone <your-repo>
-   cd PR-Review-AMP
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   cd server
-   npm install --production
-   ```
-
-3. **Configure environment:**
-   ```bash
-   cp .env.example .env
-   nano .env  # Edit with your values
-   ```
-
-4. **Setup as system service (systemd):**
-   
-   Create `/etc/systemd/system/amp-webhook.service`:
-   ```ini
-   [Unit]
-   Description=Amp PR Review Webhook Server
-   After=network.target
-
-   [Service]
-   Type=simple
-   User=YOUR_USER
-   WorkingDirectory=/path/to/PR-Review-AMP/server
-   ExecStart=/usr/bin/node index.js
-   Restart=always
-   Environment=NODE_ENV=production
-
-   [Install]
-   WantedBy=multi-user.target
-   ```
-
-5. **Start service:**
-   ```bash
-   sudo systemctl enable amp-webhook
-   sudo systemctl start amp-webhook
-   sudo systemctl status amp-webhook
-   ```
-
-6. **Setup reverse proxy (nginx):**
-   
-   Create `/etc/nginx/sites-available/amp-webhook`:
-   ```nginx
-   server {
-       listen 80;
-       server_name webhook.yourdomain.com;
-
-       location / {
-           proxy_pass http://localhost:3000;
-           proxy_http_version 1.1;
-           proxy_set_header Upgrade $http_upgrade;
-           proxy_set_header Connection 'upgrade';
-           proxy_set_header Host $host;
-           proxy_cache_bypass $http_upgrade;
-       }
-   }
-   ```
-
-   Enable and restart nginx:
-   ```bash
-   sudo ln -s /etc/nginx/sites-available/amp-webhook /etc/nginx/sites-enabled/
-   sudo nginx -t
-   sudo systemctl restart nginx
-   ```
-
-7. **Setup SSL (Let's Encrypt):**
-   ```bash
-   sudo apt install certbot python3-certbot-nginx
-   sudo certbot --nginx -d webhook.yourdomain.com
-   ```
-
-8. **Update GitHub webhook:**
-   - URL: `https://webhook.yourdomain.com/webhook`
+See deployment documentation for detailed steps.
 
 ## Security Considerations
 
@@ -240,9 +160,7 @@ curl http://localhost:3000/health
 │   └── .env.example          # Environment template
 ├── .agents/skills/pr-review/ # Amp PR review skill
 ├── test-webhook-payload.json # Test payload
-├── test-webhook.sh          # Local test script
-├── SETUP.md                 # Detailed setup guide
-├── LOCAL_TESTING.md         # Local testing guide
+├── test-webhook.sh          # Test script
 └── README.md                # This file
 ```
 

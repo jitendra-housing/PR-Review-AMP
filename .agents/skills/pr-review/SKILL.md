@@ -47,12 +47,14 @@ Extract from URL (e.g., `https://github.com/owner/repo/pull/123`):
 ```bash
 # Only clone if repo doesn't exist
 if [ ! -d ".temp/REPO/.git" ]; then
+  echo "📦 SERVER: Repo clone start"
   mkdir -p .temp
   cd .temp
   # User will clone manually - DO NOT clone automatically
   echo "Repository not found. Please clone manually."
+  echo "📦 SERVER: Repo clone done"
 else
-  echo "Repository already exists, using existing clone"
+  echo "📦 SERVER: Using existing repo"
 fi
 cd .temp/REPO
 ```
@@ -60,6 +62,10 @@ cd .temp/REPO
 **IMPORTANT:** Never remove .temp/ or the repository directory unless explicitly asked by the user.
 
 ### 3. Fetch PR Data and Checkout Feature Branch
+
+```bash
+echo "🔍 SERVER: Fetching PR data"
+```
 
 Use GitHub API to get PR details:
 ```bash
@@ -72,10 +78,18 @@ Extract:
 - `base.ref` (target branch, e.g., main)
 - `head.ref` (feature branch)
 
+```bash
+echo "⬇️ SERVER: Git fetch start"
+```
+
 Fetch and checkout the PR branch:
 ```bash
 git fetch origin pull/PR_NUMBER/head:pr-PR_NUMBER
 git checkout pr-PR_NUMBER
+```
+
+```bash
+echo "⬇️ SERVER: Git fetch done"
 ```
 
 **IMPORTANT:** You are now on the feature branch with the full codebase context.
@@ -151,6 +165,10 @@ git diff origin/BASE_REF...pr-PR_NUMBER > pr_diff.txt
 ```
 
 ### 6. Review EVERY File Using Sub-Agents
+
+```bash
+echo "🔎 SERVER: Review start"
+```
 
 **DO NOT SKIP ANY FILES.** Use parallel sub-agents for efficient review:
 
@@ -643,8 +661,14 @@ Repo path: /Users/.../housing-app
 **Step 9: Post review to GitHub (MANDATORY)**
 - Mark "Post review to GitHub PR" as in-progress
 - Save formatted review to `review_comment.md`
+- ```bash
+  echo "📤 SERVER: Posting review to GitHub"
+  ```
 - Use `gh pr comment PR_NUMBER --repo OWNER/REPO --body-file review_comment.md`
 - Verify comment posted successfully
+- ```bash
+  echo "✅ SERVER: Review complete"
+  ```
 - Clean up review file
 - Mark "Post review to GitHub PR" as completed
 
@@ -776,6 +800,9 @@ echo "✅ Review posted to PR #456"
 # Only cleanup review file, NOT the repo
 rm -f review_comment.md
 todo_write: mark "post" as "completed"
+
+# MANDATORY: Signal completion (used by automation)
+echo "DONE" > .temp/review_complete.signal
 ```
 
 **Note:** Repository in .temp/ is preserved for future reviews. Never delete unless user explicitly requests.

@@ -67,35 +67,25 @@ async function triggerAmpReview(prUrl) {
   console.log('[AMP] Working directory:', projectRoot);
   console.log('[AMP] -----------------------------------\n');
   
-  return new Promise((resolve, reject) => {
-    const amp = spawn('bash', ['-c', `printf "review PR ${prUrl}\\nexit\\n" | amp`], {
-      cwd: projectRoot,
-      env: {
-        ...process.env,
-        GITHUB_TOKEN: process.env.GITHUB_TOKEN,
-        GH_TOKEN: process.env.GITHUB_TOKEN
-      },
-      stdio: ['inherit', 'inherit', 'inherit']
-    });
-    
-    amp.on('close', (code) => {
-      console.log(`\n[AMP] -----------------------------------`);
-      console.log(`[AMP] Process exited with code ${code}`);
-      
-      if (code === 0) {
-        console.log('[AMP] ✓ Review completed successfully\n');
-        resolve({ success: true });
-      } else {
-        console.log('[AMP] ✗ Review failed\n');
-        reject(new Error(`Amp exited with code ${code}`));
-      }
-    });
-    
-    amp.on('error', (error) => {
-      console.error('[AMP] ✗ Failed to start:', error.message);
-      reject(error);
-    });
+  const amp = spawn('bash', ['-c', `printf "review PR ${prUrl}\\n" | amp --mode large`], {
+    cwd: projectRoot,
+    env: {
+      ...process.env,
+      GH_TOKEN: process.env.GITHUB_TOKEN
+    },
+    stdio: ['pipe', 'pipe', 'pipe']
   });
+  
+  amp.stdout.on('data', (data) => {
+    process.stdout.write(data);
+  });
+  
+  amp.stderr.on('data', (data) => {
+    process.stderr.write(data);
+  });
+  
+  console.log('✓ Review process started\n');
+  return { success: true, message: 'Review started' };
 }
 
 app.post('/webhook', async (req, res) => {
