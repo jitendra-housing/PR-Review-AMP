@@ -1,0 +1,42 @@
+[
+  {
+    "id": "f8",
+    "content": "Review: ios/Application/Common/Deeplinks/DeeplinkManager.swift",
+    "status": "completed"
+  },
+  {
+    "id": "f9",
+    "content": "Review: ios/Application/Common/Deeplinks/Domain/Entities/WhatsAppSessionAuthResponse.swift",
+    "status": "completed"
+  },
+  {
+    "id": "f10",
+    "content": "Review: ios/Application/Common/Deeplinks/Domain/Interactors/DeeplinkInteractor.swift",
+    "status": "completed"
+  },
+  {
+    "id": "f11",
+    "content": "Review: ios/Application/Common/Deeplinks/Domain/NetworkServices/DeeplinkNetworkServiceProtocol.swift",
+    "status": "completed"
+  },
+  {
+    "id": "f12",
+    "content": "Review: ios/Application/Common/Deeplinks/Platforms/CloudFunctionHandler.swift",
+    "status": "completed"
+  },
+  {
+    "id": "f13",
+    "content": "Review: ios/Application/Common/Deeplinks/Platforms/WhatsappLoginHandler.swift",
+    "status": "completed"
+  },
+  {
+    "id": "f14",
+    "content": "Review: ios/Application/Features/Demand/CRF/Presentation/CRFGalleryViewController.swift",
+    "status": "completed"
+  },
+  {
+    "id": "f2",
+    "content": "Review: ios/HomePageModule/HomePage/Presentation/ViewControllers/HomePageViewController+SmartSuggestion.swift",
+    "status": "completed"
+  }
+]

@@ -1,0 +1,17 @@
+{
+  "action": "review_requested",
+  "pull_request": {
+    "html_url": "https://github.com/owner/repo/pull/123",
+    "number": 123,
+    "title": "Test PR for Amp Review",
+    "user": {
+      "login": "developer"
+    }
+  },
+  "requested_reviewer": {
+    "login": "amp-reviewer"
+  },
+  "repository": {
+    "full_name": "owner/repo"
+  }
+}

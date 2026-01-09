@@ -47,12 +47,14 @@ Extract from URL (e.g., `https://github.com/owner/repo/pull/123`):
 ```bash
 # Only clone if repo doesn't exist
 if [ ! -d ".temp/REPO/.git" ]; then
+  echo "📦 SERVER: Repo clone start"
   mkdir -p .temp
   cd .temp
   # User will clone manually - DO NOT clone automatically
   echo "Repository not found. Please clone manually."
+  echo "📦 SERVER: Repo clone done"
 else
-  echo "Repository already exists, using existing clone"
+  echo "📦 SERVER: Using existing repo"
 fi
 cd .temp/REPO
 ```
@@ -60,6 +62,10 @@ cd .temp/REPO
 **IMPORTANT:** Never remove .temp/ or the repository directory unless explicitly asked by the user.
 
 ### 3. Fetch PR Data and Checkout Feature Branch
+
+```bash
+echo "🔍 SERVER: Fetching PR data"
+```
 
 Use GitHub API to get PR details:
 ```bash
@@ -72,10 +78,18 @@ Extract:
 - `base.ref` (target branch, e.g., main)
 - `head.ref` (feature branch)
 
+```bash
+echo "⬇️ SERVER: Git fetch start"
+```
+
 Fetch and checkout the PR branch:
 ```bash
 git fetch origin pull/PR_NUMBER/head:pr-PR_NUMBER
 git checkout pr-PR_NUMBER
+```
+
+```bash
+echo "⬇️ SERVER: Git fetch done"
 ```
 
 **IMPORTANT:** You are now on the feature branch with the full codebase context.
@@ -121,7 +135,7 @@ git push
 
 **Store sync status** for inclusion in the review summary.
 
-### 5. Get List of Changed Files and Create Checklist
+### 5. Get List of Changed Files and Classify by Priority
 
 **IMPORTANT**: Use three-dot diff to get ONLY the changes introduced by this PR:
 
@@ -132,14 +146,33 @@ git diff --name-only origin/BASE_REF...pr-PR_NUMBER | cat -n
 
 **DO NOT use `git diff BASE_SHA HEAD_SHA`** as it will include changes from other PRs merged to base.
 
-**CRITICAL: Create a TODO checklist with ALL files before starting review:**
+**CRITICAL: Classify files by review depth to optimize costs:**
 
-Use `todo_write` to create a checklist item for EVERY file PLUS the GitHub posting step:
+**AUTO-SKIP (don't review, don't add to TODO):**
+- Package locks: `package-lock.json`, `yarn.lock`, `Podfile.lock`, `Gemfile.lock`, `pnpm-lock.yaml`
+- Generated files: `*.generated.*`, `*.g.dart`, `*.g.kt`, `*.g.swift`, `.pb.go`, `*_pb2.py`
+- Vendored/dependencies: files in `vendor/`, `node_modules/`, `Pods/`, `.build/`
+- Binary/assets: `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.ttf`, `.woff`, `.ico`
+
+**QUICK REVIEW (pattern check only, <10 sec):**
+- Resource files: `.json`, `.xml`, `.yaml`, `.strings`, `.properties`
+- Documentation: `.md`, `.txt`
+- Config files: `.gitignore`, `.eslintrc`, `tsconfig.json`
+
+**DEEP REVIEW (full analysis):**
+- Source code: `.swift`, `.kt`, `.java`, `.ts`, `.tsx`, `.js`, `.jsx`, `.py`, `.go`, `.rb`, `.php`
+- UI code: `.xib`, `.storyboard`, `.vue`, `.svelte`
+- Tests: Files matching `*test*`, `*spec*`, `*Test.java`, `*Tests.swift`
+- Critical configs: `.env`, API configs, security configs
+
+**Create a TODO checklist with categorized files:**
+
+Use `todo_write` to create checklist items:
 ```json
 [
-  {"id": "f1", "content": "Review: path/to/file1.swift", "status": "todo"},
-  {"id": "f2", "content": "Review: path/to/file2.swift", "status": "todo"},
-  {"id": "f3", "content": "Review: path/to/file3.xib", "status": "todo"},
+  {"id": "pattern-cache", "content": "Load guidelines and cache patterns", "status": "todo"},
+  {"id": "f1", "content": "DEEP: path/to/file1.swift", "status": "todo"},
+  {"id": "f2", "content": "QUICK: config.json", "status": "todo"},
   ...,
   {"id": "post", "content": "Post review to GitHub PR", "status": "todo"}
 ]
@@ -150,36 +183,85 @@ Also generate the diff for reference:
 git diff origin/BASE_REF...pr-PR_NUMBER > pr_diff.txt
 ```
 
-### 6. Review EVERY File Using Sub-Agents
+### 6. Load Platform Guidelines and Cache Patterns
 
-**DO NOT SKIP ANY FILES.** Use parallel sub-agents for efficient review:
-
-**Step 1: Group files into batches**
-
-Group files by category for parallel processing:
-- Swift/Kotlin/Java source files (batch size: 5-10 files)
-- UI files (.xib, .storyboard, .xml)
-- Resource files (strings, images, JSON)
-- Generated files (quick verification only)
-- Configuration files
-
-**Step 2: Launch sub-agents in parallel**
-
-For each batch, launch a Task sub-agent with:
-- List of files to review
-- Repository path
-- Base and head commit SHAs
-- Instructions on what to check
-
-**Example:**
-```
-Task 1: Review Swift files f1-f10
-Task 2: Review Swift files f11-f20
-Task 3: Review UI and resource files f21-f30
-Task 4: Review ViewModels f31-f38
+```bash
+echo "🔎 SERVER: Loading platform guidelines and caching patterns"
 ```
 
-**Step 3: Each sub-agent must:**
+Mark pattern-cache as in-progress:
+```bash
+todo_write # mark "pattern-cache" as "in-progress"
+```
+
+**Step 6a: Detect platforms and load guideline files**
+
+Based on file extensions in the changed files, load relevant platform-specific guidelines from **shared location**:
+
+```bash
+# Guidelines are shared across pr-review and pr-review-rag skills
+GUIDELINES_DIR=".agents/guidelines"
+
+# Detect platforms from file extensions:
+# - .swift, .m, .h, .xib, .storyboard → iOS
+# - .jsx, .tsx, .js (frontend) → Web/React
+# - .kt, .java (Android) → Android
+# - .py → Python
+
+# For iOS files:
+if [ -f "$GUIDELINES_DIR/iOS.md" ]; then
+    cat "$GUIDELINES_DIR/iOS.md"  # Read and cache iOS-specific conventions
+fi
+
+# For Web/React files:
+if [ -f "$GUIDELINES_DIR/Web.md" ]; then
+    cat "$GUIDELINES_DIR/Web.md"  # Read and cache Web/React conventions
+fi
+
+# For Android files:
+if [ -f "$GUIDELINES_DIR/Android.md" ]; then
+    cat "$GUIDELINES_DIR/Android.md"
+fi
+
+# Store loaded guidelines in memory for use throughout review
+```
+
+**Step 6b: Use finder/grep to learn codebase patterns**
+
+Since this skill has local clone, use file-based analysis to understand patterns:
+
+```bash
+# Search for DI patterns
+grep -r "container\.resolve\|inject\|@Inject" --include="*.swift" --include="*.kt" | head -20
+
+# Search for factory patterns  
+grep -r "Factory\|Builder\.create" --include="*.swift" --include="*.kt" | head -20
+
+# Search for styling patterns
+grep -r "@linaria\|@emotion" --include="*.jsx" --include="*.tsx" | head -20
+
+# Search for component patterns
+find . -name "*ViewController.swift" -o -name "*VM.swift" -o -name "*Coordinator.swift" | head -20
+
+# Store discovered patterns in memory
+```
+
+**Combine guideline files + discovered patterns** for comprehensive review knowledge.
+
+Mark pattern-cache as completed:
+```bash
+todo_write # mark "pattern-cache" as "completed"
+```
+
+### 7. Review Files Sequentially
+
+```bash
+echo "🔎 SERVER: Reviewing files"
+```
+
+**DO NOT SKIP ANY FILES (except auto-skipped categories).**
+
+Review files one by one, following this process for each file:
 
 a. **Mark each file as in-progress** before reviewing:
    ```bash
@@ -196,19 +278,44 @@ c. **Get the diff** to see what changed:
    git diff BASE_SHA HEAD_SHA -- path/to/file
    ```
 
-d. **Analyze based on file type:**
+d. **Use cached patterns and guidelines:**
+   
+   **Apply CACHED knowledge from Step 6:**
+   - **Guideline files** (iOS.md, Web.md, etc.) - explicit team conventions
+   - **Discovered patterns** (from grep/find) - codebase patterns
+   
+   **Priority:** Guideline files take precedence over discovered patterns
 
-**Swift/Kotlin/Java Files (.swift, .kt, .java):**
+e. **Analyze based on file type and depth:**
+
+**QUICK REVIEW FILES** (resources, docs):
+   - Syntax errors (JSON/YAML/XML validation)
+   - Duplicate keys
+   - Sensitive data (passwords, tokens) - HIGH severity
+   - Broken links in markdown
+   - **Skip deep analysis** - <10 seconds per file
+
+**DEEP REVIEW FILES** (source code, tests):
+
+**Source Code Files (.swift, .kt, .java, .ts, .jsx, .py, .go, etc.):**
    - Read entire file with full context
-   - Check for:
-     - Thread safety (async operations, shared state)
-     - Memory leaks (retain cycles, weak references)
-     - Force unwraps and optional handling
+   - **Check for pattern violations** (using CACHED patterns from Step 6):
+     - ❌ DI container bypassed: Direct instantiation vs container/injection
+     - ❌ Factory pattern ignored: `new Object()` when factory exists
+     - ❌ Singleton violations: Direct construction vs singleton pattern
+     - ❌ Styling violations: Emotion when Linaria is standard
+     - ❌ Module boundary violations: `common/` importing from `Apps/`
+   - **Senior developer metrics:**
+     - Complexity (>50 lines, >3 nesting)
+     - Code duplication
+     - Naming conventions
+     - Function parameters (>4 → suggest config object)
+   - **Safety checks:**
+     - Thread safety, memory leaks
+     - Null/undefined handling
      - Error handling completeness
-     - API usage patterns
-     - Delegate patterns and memory management
-   - Read imported files for context
-   - Check if changes follow existing patterns
+   - Read imported files for context if needed
+   - Check if changes follow cached patterns
 
 **UI Files (.xib, .storyboard, .xml):**
    - Check for constraint conflicts
@@ -254,29 +361,31 @@ d. **Analyze based on file type:**
    - Check for dependency version changes
    - Flag any unusual modifications
 
-e. **Mark file as completed** after review:
+f. **Collect findings for this file:**
+   - File path
+   - Line numbers (from diff - ONLY changed lines)
+   - Severity (use these guidelines):
+     - **HIGH**: Security issues, architectural pattern violations (DI, factories, module boundaries), memory leaks, XSS, SQL injection
+     - **MEDIUM**: Convention violations (naming, constants), code complexity, missing error handling
+     - **LOW**: Code style preferences, minor optimizations, documentation
+   - Issue description
+   - Suggested fix (reference guideline file if applicable)
+
+g. **Mark file as completed** after review:
    ```bash
    todo_write # update file status to "completed"
    ```
 
-f. **Return findings** to main agent with:
-   - File path
-   - Line numbers of issues
-   - Severity (HIGH/MEDIUM/LOW)
-   - Issue description
-   - Suggested fix
-   - Context (what other files were read)
+h. **Move to next file** and repeat until all files reviewed
 
-**Step 4: Main agent coordinates**
+### 8. Compile Comprehensive Review
 
-The main agent:
-1. Launches multiple Task sub-agents in parallel (group files into 4-6 batches)
-2. Monitors progress via todo_read
-3. Collects findings from all sub-agents
-4. Compiles comprehensive review
-5. Posts to GitHub
-
-**Important:** Each sub-agent operates independently and updates the shared TODO checklist in real-time.
+After reviewing all files:
+- Group findings by severity (HIGH/MEDIUM/LOW)
+- Group by file
+- Deduplicate similar issues
+- Include file statistics (deep/quick/skipped counts)
+- Add branch sync status
 
 #### Review Focus Areas for Code Files
 
@@ -332,7 +441,7 @@ If any files are still "todo" or "in-progress", **continue reviewing them**.
 
 ### 8. Generate Structured Review Output
 
-After analyzing **ALL files** with full context, create a comprehensive review.
+After analyzing **ALL files** with full context and cached patterns/guidelines, create a comprehensive review.
 
 Output format (structured JSON for programmatic use):
 
@@ -643,8 +752,14 @@ Repo path: /Users/.../housing-app
 **Step 9: Post review to GitHub (MANDATORY)**
 - Mark "Post review to GitHub PR" as in-progress
 - Save formatted review to `review_comment.md`
+- ```bash
+  echo "📤 SERVER: Posting review to GitHub"
+  ```
 - Use `gh pr comment PR_NUMBER --repo OWNER/REPO --body-file review_comment.md`
 - Verify comment posted successfully
+- ```bash
+  echo "✅ SERVER: Review complete"
+  ```
 - Clean up review file
 - Mark "Post review to GitHub PR" as completed
 
@@ -776,6 +891,9 @@ echo "✅ Review posted to PR #456"
 # Only cleanup review file, NOT the repo
 rm -f review_comment.md
 todo_write: mark "post" as "completed"
+
+# MANDATORY: Signal completion (used by automation)
+echo "DONE" > .temp/review_complete.signal
 ```
 
 **Note:** Repository in .temp/ is preserved for future reviews. Never delete unless user explicitly requests.
