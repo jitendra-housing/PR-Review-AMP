@@ -1,4 +1,6 @@
-# Quick Usage Guide
+# PR Review Workflow - Quick Usage Guide
+
+Custom PR review skills running on Amp.
 
 ## Choosing the Right Skill
 
@@ -95,7 +97,7 @@ Copy the ngrok URL (e.g., `https://abc123.ngrok.io`)
    [WEBHOOK] ✓ Valid request for PR: https://github.com/...
    [AMP] Triggering review for: https://github.com/...
    ```
-4. Amp will analyze the PR and post a review comment
+4. The PR review skill will analyze the PR and post a review comment
 
 ## Production (Dedicated Server)
 
@@ -236,13 +238,17 @@ curl https://your-ngrok-url.ngrok.io/health
 **Signature validation fails:**
 - Ensure webhook secret matches in `.env` and GitHub
 
-**Amp doesn't run:**
+**Skill doesn't run:**
 ```bash
 # Test Amp is installed
 amp --version
 
-# Test GitHub token
+# Test GitHub CLI is authenticated
 gh auth status
+
+# Test skill manually
+amp
+# Then type: use pr-review-rag skill to review PR https://github.com/owner/repo/pull/123
 ```
 
 ## Tips

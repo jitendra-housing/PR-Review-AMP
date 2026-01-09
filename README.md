@@ -1,14 +1,14 @@
-# Amp PR Review Automation
+# PR Review Workflow
 
-Automated GitHub PR review system using Amp's PR review skill, triggered via GitHub webhooks.
+Automated GitHub PR review system using custom PR review skills running on Amp, triggered via GitHub webhooks.
 
 ## Architecture
 
 ```
-GitHub PR → Webhook → Express Server → Amp CLI (pr-review skill) → GitHub Comment
+GitHub PR → Webhook → Express Server → Amp CLI → PR Review Skill → GitHub Comment
 ```
 
-When you add the configured GitHub user as a reviewer, this system automatically triggers Amp to perform a comprehensive code review.
+When you add the configured GitHub user as a reviewer, this system automatically triggers a comprehensive code review using custom skills that run on Amp.
 
 ## Quick Start (Local Testing)
 
@@ -83,8 +83,8 @@ Go to your repo → Settings → Webhooks → Add webhook:
 2. **GitHub Webhook**: Sends POST to your server
 3. **Signature Validation**: Server verifies authentic GitHub request
 4. **Filter**: Only processes `review_requested` for configured username
-5. **Amp Execution**: Runs `review PR <url>` using pr-review skill
-6. **Review Posted**: Amp posts comprehensive review to GitHub PR
+5. **Skill Execution**: Runs custom PR review skill on Amp (`use pr-review-rag skill to review PR <url>`)
+6. **Review Posted**: Skill posts comprehensive review to GitHub PR
 
 ## PR Review Skills
 
