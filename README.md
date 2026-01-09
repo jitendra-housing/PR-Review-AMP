@@ -86,14 +86,75 @@ Go to your repo → Settings → Webhooks → Add webhook:
 5. **Amp Execution**: Runs `review PR <url>` using pr-review skill
 6. **Review Posted**: Amp posts comprehensive review to GitHub PR
 
+## PR Review Skills
+
+This system includes two Amp skills for PR review:
+
+### pr-review-rag (PREFERRED - Default)
+
+**Uses:** GitHub API + RAG (no local clone needed)
+
+**Pros:**
+- ✅ 10x faster (no git clone)
+- ✅ Uses RAG for deep codebase understanding
+- ✅ Can review multiple PRs simultaneously (no repo locking)
+- ✅ Always uses latest code from GitHub
+- ✅ Lower disk space usage
+
+**Cons:**
+- ❌ Requires repository authorization in Amp (for private repos)
+- ❌ Depends on GitHub API rate limits
+
+**When to use:** Default choice for all reviews
+
+### pr-review (Fallback)
+
+**Uses:** Local git clone + file analysis
+
+**Pros:**
+- ✅ Works without GitHub authorization (clones repo)
+- ✅ No API rate limit dependencies
+- ✅ Can work offline (after initial clone)
+
+**Cons:**
+- ❌ Slower (requires git operations)
+- ❌ **Cannot review parallel PRs** (repo checkout conflict)
+- ❌ Higher disk space usage (.temp/ directory)
+- ❌ Requires git clone for each new repository
+
+**When to use:** When RAG skill fails or repository not authorized
+
+### Platform-Specific Guidelines
+
+Both skills automatically load platform-specific conventions from `.agents/guidelines/`:
+
+| Platform | Files | Guideline | Status |
+|----------|-------|-----------|--------|
+| iOS | `.swift`, `.m`, `.h`, `.xib` | `iOS.md` | ✅ 433 lines |
+| Web/React | `.jsx`, `.tsx`, `.js` | `Web.md` | ✅ 587 lines |
+| Android | `.kt`, `.java` | `Android.md` | ⏹️ Not created |
+
+**Guidelines include:**
+- Dependency injection patterns (e.g., container.resolve for iOS)
+- Styling conventions (e.g., Linaria for Web)
+- Module boundary rules (e.g., common/ vs Apps/ for Web)
+- Memory management patterns
+- Naming conventions
+- Security best practices
+
+See `.agents/guidelines/README.md` for details.
+
 ## Environment Variables
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `GITHUB_WEBHOOK_SECRET` | Secret for webhook signature validation | ✅ |
-| `GITHUB_TOKEN` | GitHub PAT with `repo` scope | ✅ |
-| `AMP_GITHUB_USERNAME` | GitHub username that triggers reviews | ✅ |
-| `PORT` | Server port (default: 3000) | ❌ |
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `GITHUB_WEBHOOK_SECRET` | Secret for webhook signature validation | ✅ | - |
+| `GITHUB_TOKEN` | GitHub PAT with `repo` scope | ✅ | - |
+| `AMP_GITHUB_USERNAME` | GitHub username that triggers reviews | ✅ | - |
+| `USE_RAG` | Use pr-review-rag (true) or pr-review (false) | ❌ | `true` |
+| `MODEL` | Amp model: `sonnet` or `opus` | ❌ | `sonnet` |
+| `TEST_MODE` | Interactive mode for testing | ❌ | `false` |
+| `PORT` | Server port | ❌ | `3000` |
 
 ## Production Deployment
 
@@ -153,15 +214,35 @@ curl http://localhost:3000/health
 ## File Structure
 
 ```
-.
+PR-Review-AMP/
+├── .agents/
+│   ├── guidelines/               # Shared platform-specific guidelines
+│   │   ├── iOS.md               # iOS conventions (housing-app)
+│   │   ├── Web.md               # React/JS conventions (housing.brahmand)
+│   │   └── README.md            # Guidelines documentation
+│   └── skills/
+│       ├── check-branch-sync/   # Branch sync checker skill
+│       ├── pr-review/           # Local clone skill (fallback)
+│       │   └── SKILL.md
+│       └── pr-review-rag/       # RAG skill (preferred, default)
+│           └── SKILL.md
+│
 ├── server/
-│   ├── index.js              # Express webhook server
-│   ├── package.json          # Dependencies
-│   └── .env.example          # Environment template
-├── .agents/skills/pr-review/ # Amp PR review skill
-├── test-webhook-payload.json # Test payload
-├── test-webhook.sh          # Test script
-└── README.md                # This file
+│   ├── index.js                 # Express webhook server
+│   ├── package.json             # Server dependencies
+│   ├── .env.example             # Environment template
+│   └── .env                     # Your config (gitignored)
+│
+├── .temp/                       # Auto-created for local clones
+│   ├── housing-app/             # Cloned by pr-review skill
+│   └── housing.brahmand/        # Cloned by pr-review skill
+│
+├── .gitignore
+├── package.json                 # Root package.json
+├── test-webhook-payload.json    # Test payload
+├── test-webhook.sh              # Manual webhook test script
+├── README.md                    # This file
+└── USAGE.md                     # Quick usage guide
 ```
 
 ## Testing Locally

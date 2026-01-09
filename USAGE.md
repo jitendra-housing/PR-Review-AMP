@@ -1,5 +1,49 @@
 # Quick Usage Guide
 
+## Choosing the Right Skill
+
+### pr-review-rag (PREFERRED - Default)
+
+**Best for:**
+- ✅ All reviews (default choice)
+- ✅ Reviewing multiple PRs at the same time
+- ✅ Fast reviews (10x faster than local clone)
+- ✅ Private repos authorized in Amp
+
+**Limitations:**
+- Requires GitHub authorization in Amp for private repos
+- Subject to GitHub API rate limits
+
+**Set in `.env`:**
+```bash
+USE_RAG=true  # Default
+```
+
+### pr-review (Fallback)
+
+**Best for:**
+- Repositories not authorized in Amp
+- When you need to work offline
+- When GitHub API is unavailable
+
+**Limitations:**
+- **⚠️ Cannot run parallel PR reviews** (git checkout conflicts)
+- Slower (requires git clone and checkout)
+- Higher disk usage
+
+**Set in `.env`:**
+```bash
+USE_RAG=false
+```
+
+### Platform-Specific Guidelines
+
+Both skills use shared guidelines from `.agents/guidelines/`:
+- **iOS.md** - housing-app conventions (DI patterns, memory management, naming)
+- **Web.md** - housing.brahmand conventions (Linaria, module boundaries, Redux)
+
+Skills auto-detect platform and load relevant guidelines. Update guideline files anytime to improve reviews.
+
 ## Local Testing (Your Machine)
 
 ### Setup (One-time)
@@ -151,9 +195,23 @@ GITHUB_WEBHOOK_SECRET=random-secret-string-123
 GITHUB_TOKEN=ghp_your_github_personal_access_token
 AMP_GITHUB_USERNAME=jitendra-housing
 
-# Optional
+# Optional - Skill Selection
+USE_RAG=true              # true=pr-review-rag (default, faster), false=pr-review (fallback)
+MODEL=sonnet              # sonnet (faster, cheaper) or opus (smarter, expensive)
+TEST_MODE=false           # true=interactive, false=background
+
+# Optional - Server
 PORT=3000
 ```
+
+### Skill Selection Guide
+
+| Scenario | USE_RAG | Why |
+|----------|---------|-----|
+| Normal reviews | `true` | Fastest, can run parallel PRs |
+| Private repo not in Amp | `false` | Need local clone |
+| Testing multiple PRs | `true` | RAG allows parallel reviews |
+| One PR at a time | Either | Both work fine |
 
 ## Troubleshooting
 
