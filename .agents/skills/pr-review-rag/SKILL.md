@@ -42,6 +42,10 @@ Extract from URL (e.g., `https://github.com/owner/repo/pull/123`):
 
 ```bash
 echo "🔍 SERVER: Fetching PR data"
+echo "💰 [COST] Initializing cost tracking"
+echo "0" > /tmp/pr_review_tokens_in.txt
+echo "0" > /tmp/pr_review_tokens_out.txt
+echo "0" > /tmp/librarian_calls.txt
 ```
 
 ### 2. Fetch PR Data via GitHub API
@@ -115,10 +119,19 @@ Use `todo_write` to create checklist items:
 ⏭️ Skipped files (auto-generated, lock files, binaries): 15 files
 ```
 
+**Log file classification:**
+```bash
+echo "💰 [COST] File classification complete:"
+echo "💰 [COST] - Auto-skipped: ${SKIPPED_COUNT} files"
+echo "💰 [COST] - Quick review: ${QUICK_COUNT} files"
+echo "💰 [COST] - Deep review: ${DEEP_COUNT} files"
+```
+
 ### 4. Cache Codebase Patterns Using RAG (One-Time Cost)
 
 ```bash
 echo "🔎 SERVER: Learning codebase patterns"
+echo "💰 [COST] === STEP 4: PATTERN CACHE START ==="
 ```
 
 **CRITICAL: Learn all patterns ONCE at the start to avoid repeated RAG queries**
@@ -148,22 +161,38 @@ Based on file extensions in the PR, load relevant platform-specific guidelines:
 # Guidelines are shared across pr-review and pr-review-rag skills
 GUIDELINES_DIR=".agents/guidelines"
 
+# ALWAYS load Common.md (universal review standards)
+GUIDELINE_SIZE=$(wc -w "$GUIDELINES_DIR/Common.md" | awk '{print $1}')
+GUIDELINE_TOKENS=$((GUIDELINE_SIZE * 4 / 3))
+echo "💰 [COST] Loading Common.md - Est tokens: ~${GUIDELINE_TOKENS}"
+cat "$GUIDELINES_DIR/Common.md"  # Universal review standards
+
 # For iOS files:
 if [ -f "$GUIDELINES_DIR/iOS.md" ]; then
+    GUIDELINE_SIZE=$(wc -w "$GUIDELINES_DIR/iOS.md" | awk '{print $1}')
+    GUIDELINE_TOKENS=$((GUIDELINE_SIZE * 4 / 3))
+    echo "💰 [COST] Loading iOS.md - Est tokens: ~${GUIDELINE_TOKENS}"
     cat "$GUIDELINES_DIR/iOS.md"  # Read and cache iOS-specific conventions
 fi
 
 # For Android files:
 if [ -f "$GUIDELINES_DIR/Android.md" ]; then
+    GUIDELINE_SIZE=$(wc -w "$GUIDELINES_DIR/Android.md" | awk '{print $1}')
+    GUIDELINE_TOKENS=$((GUIDELINE_SIZE * 4 / 3))
+    echo "💰 [COST] Loading Android.md - Est tokens: ~${GUIDELINE_TOKENS}"
     cat "$GUIDELINES_DIR/Android.md"
 fi
 
 # For Web/React files:
 if [ -f "$GUIDELINES_DIR/Web.md" ]; then
+    GUIDELINE_SIZE=$(wc -w "$GUIDELINES_DIR/Web.md" | awk '{print $1}')
+    GUIDELINE_TOKENS=$((GUIDELINE_SIZE * 4 / 3))
+    echo "💰 [COST] Loading Web.md - Est tokens: ~${GUIDELINE_TOKENS}"
     cat "$GUIDELINES_DIR/Web.md"
 fi
 
 # Store loaded guidelines in memory for use throughout review
+echo "💰 [COST] Guidelines loaded in context"
 ```
 
 **Platform detection mapping:**
@@ -175,6 +204,13 @@ fi
 - **Go:** `.go` → Load `Go.md`
 
 **Step 4b: Ask RAG these questions ONCE and cache results:**
+
+```bash
+echo "💰 [COST] Calling librarian for pattern analysis..."
+LIBRARIAN_CALLS=$(cat /tmp/librarian_calls.txt)
+echo "$((LIBRARIAN_CALLS + 1))" > /tmp/librarian_calls.txt
+echo "💰 [COST] Librarian call #$((LIBRARIAN_CALLS + 1)) - Pattern cache"
+```
 
 ```
 Use librarian to ask: "Analyze this codebase and provide comprehensive patterns that a senior developer would check:
@@ -237,6 +273,12 @@ Provide concrete code examples from this repository for each pattern."
 
 **Store the comprehensive response in memory for use throughout the review.**
 
+```bash
+echo "💰 [COST] Pattern cache complete - response stored in memory"
+echo "💰 [COST] === STEP 4: PATTERN CACHE DONE ==="
+todo_write # mark "pattern-cache" as "completed"
+```
+
 This cached knowledge acts like a senior developer's mental model of "how we do things here".
 
 **Step 4c: Combine guideline files + RAG patterns**
@@ -250,15 +292,11 @@ You now have TWO sources of pattern knowledge:
 - RAG patterns supplement where guidelines don't cover
 - If conflict, use guideline files and note the discrepancy
 
-Mark pattern-cache as completed:
-```bash
-todo_write # mark "pattern-cache" as "completed"
-```
-
 ### 5. Review Files Sequentially (No Sub-Agents)
 
 ```bash
 echo "🔎 SERVER: Reviewing files sequentially"
+echo "💰 [COST] === STEP 5: FILE REVIEWS START ==="
 ```
 
 **DO NOT SKIP ANY FILES (except auto-skipped categories).**
@@ -271,6 +309,7 @@ echo "🔎 SERVER: Reviewing files sequentially"
 
 a. **Mark each file as in-progress** before reviewing:
    ```bash
+   echo "💰 [COST] File ${FILE_INDEX}/${TOTAL_FILES}: ${FILE_PATH} (${REVIEW_TYPE})"
    todo_write # update file status to "in-progress"
    ```
 
@@ -281,6 +320,12 @@ b. **CRITICAL: Get complete file content first:**
    ```
    
    **IMPORTANT**: You MUST read the full file to verify what exists. NEVER make claims about missing code without seeing the complete file.
+   
+   ```bash
+   FILE_SIZE=$(wc -w <<< "$FILE_CONTENT" | awk '{print $1}')
+   FILE_TOKENS=$((FILE_SIZE * 4 / 3))
+   echo "💰 [COST] File content loaded - Est tokens: ~${FILE_TOKENS}"
+   ```
 
 c. **Use cached patterns and limited RAG queries:**
    
@@ -306,6 +351,13 @@ c. **Use cached patterns and limited RAG queries:**
    - **Test patterns:** naming, mocks, assertions
    
    **Only ask RAG for file-specific context (if needed for DEEP review):**
+   ```bash
+   # ONLY call librarian if truly needed for complex file
+   echo "💰 [COST] WARNING: Additional librarian call for ${FILE_PATH}"
+   LIBRARIAN_CALLS=$(cat /tmp/librarian_calls.txt)
+   echo "$((LIBRARIAN_CALLS + 1))" > /tmp/librarian_calls.txt
+   echo "💰 [COST] Librarian call #$((LIBRARIAN_CALLS + 1)) - File context for ${FILE_PATH}"
+   ```
    - "What is the purpose of [FILE_PATH]?"
    - "What files import/depend on [FILE_PATH]?"
    - "Show me other files with similar responsibility"
@@ -314,43 +366,16 @@ c. **Use cached patterns and limited RAG queries:**
    - Skip RAG queries entirely
    - Just apply basic checks (syntax, duplicates, sensitive data)
    
-   **Apply cached patterns to detect violations:**
+   **Apply cached patterns from Common.md + platform guidelines + RAG patterns:**
+   
    The PR changes might introduce code that works but violates established patterns.
    
-   **Examples of pattern violations to catch (with severity):**
+   **Pattern violations, severity levels, and review metrics are defined in:**
+   - **Common.md** - Universal standards (DI violations, factory patterns, security, performance, etc.)
+   - **Platform guidelines** (iOS.md, Web.md, etc.) - Platform-specific patterns
+   - **RAG patterns** - Learned from this specific codebase
    
-   **HIGH Severity - Architectural Pattern Violations:**
-   
-   DI Container violations (any language):
-   - ❌ iOS: `let vc = MyViewController()` when patterns show `container.resolve(MyViewController.self)`
-   - ❌ Java/Kotlin: `new UserService()` when patterns show `@Inject UserService` or `ServiceFactory.create()`
-   - ❌ TypeScript: `new AuthService()` when patterns show `inject(AuthService)` or `useService()`
-   - ❌ Python: `EmailSender()` when patterns show `container.get(EmailSender)`
-   
-   Factory/Builder violations (any language):
-   - ❌ Direct instantiation when factory exists: `new Connection()` vs `ConnectionFactory.create()`
-   - ❌ Not using builder pattern: `new Config(a,b,c,d,e)` vs `ConfigBuilder().withA().withB().build()`
-   
-   Singleton violations (any language):
-   - ❌ iOS: `DatabaseManager()` when patterns show `DatabaseManager.shared`
-   - ❌ Java: `new Logger()` when patterns show `Logger.getInstance()`
-   - ❌ JavaScript: `new ApiClient()` when patterns show `ApiClient.instance`
-   
-   Async pattern violations (any language):
-   - ❌ Using callbacks when codebase uses async/await or Promises
-   - ❌ Blocking calls when codebase uses non-blocking patterns
-   
-   **Why HIGH:** These break dependency injection, reduce testability, violate architecture
-   
-   **MEDIUM Severity - Convention Violations:**
-   - ❌ Naming: `error_handler` vs `errorHandler` (violates codebase naming convention)
-   - ❌ Magic numbers: `86400` vs `SECONDS_PER_DAY` or `Duration.ofDays(1)`
-   - ❌ Null handling: Force unwrap when codebase uses safe patterns
-   - ❌ Import styles: Different import format than codebase uses
-   
-   **Why MEDIUM:** These affect readability and maintainability but don't break architecture
-   
-   **Action:** Compare ALL changes against cached patterns - this is the core value of senior review.
+   Compare ALL changes against these cached patterns - this is the core value of senior review.
 
 e. **Analyze the diff patch** to see what changed
 
@@ -374,138 +399,31 @@ g. **Review based on file type and depth:**
 
 **DEEP REVIEW FILES** (source code, tests, critical configs):
 
-**Source Code Files (all languages - .swift, .kt, .java, .ts, .py, .go, etc.):**
-   - Read the COMPLETE file first (via GitHub API)
-   - Use RAG sparingly (only file-specific context if unclear)
-   - Focus ONLY on the lines that changed in the diff
-   
-   **CRITICAL: Check for pattern violations (using CACHED patterns):**
-   
-   **HIGH severity violations:**
-   - ❌ DI container bypassed: Direct instantiation vs container/injection pattern
-   - ❌ Factory pattern ignored: `new Object()` when factory/builder exists
-   - ❌ Singleton pattern violated: Direct construction when singleton pattern used
-   - ❌ Async pattern mismatch: Callbacks when codebase uses async/await
-   
-   **MEDIUM severity violations:**
-   - ❌ Naming convention: `snake_case` vs `camelCase` (or vice versa)
-   - ❌ Magic numbers: Hardcoded values vs named constants
-   - ❌ Import style: Different format than codebase standard
-   - ❌ Null handling: Unsafe vs safe patterns used in codebase
-   
-   Compare changed lines against **CACHED patterns from Step 4**
-   - **Architecture/DI violations = HIGH** (breaks testability, consistency, architecture)
-   - **Convention violations = MEDIUM** (readability, maintainability)
-   
-   **Senior Developer Metrics - Code Quality:**
-   - **Complexity:** Is the method >50 lines? Are there >3 levels of nesting? Flag with LOW severity, suggest refactoring
-   - **Single Responsibility:** Does the class/method do too many things? Check against codebase patterns
-   - **Code Duplication:** Is this logic duplicated elsewhere? Ask RAG "Show similar code in this codebase"
-   - **Naming:** Do names follow codebase conventions? Are they descriptive and consistent?
-   - **Function Parameters:** >4 parameters? Suggest using a config object/struct (check codebase pattern)
-   - **God Classes/Methods:** File >500 lines? Method >100 lines? Flag for review
-   
-   **Senior Developer Metrics - Architecture:**
-   - **Separation of Concerns:** Business logic in ViewControllers? UI code in ViewModels?
-   - **Dependency Direction:** Does the change introduce circular dependencies?
-   - **Interface Segregation:** Are interfaces too broad? Do clients depend on methods they don't use?
-   - **Testability:** Can this code be tested? Are dependencies injectable?
-   
-   **Senior Developer Metrics - Safety & Performance:**
-   - Thread safety (async operations, shared state, race conditions, concurrent access)
-   - Memory leaks (circular refs, event listener cleanup, closure captures, resource disposal)
-   - Null/undefined handling (safe patterns used in codebase: Optional, ?, ??, guard, etc.)
-   - Error handling completeness (try/catch, Result types, error propagation per codebase pattern)
-   - N+1 queries or inefficient loops (database/API calls in loops, missing batch operations)
-   - Memory allocations in hot paths (large objects created repeatedly, string concatenation in loops)
-   
-   **Senior Developer Metrics - Maintainability:**
-   - API usage patterns (deprecated APIs, wrong lifecycle methods)
-   - Delegate patterns and memory management
-   - Documentation for complex logic (especially if >20 lines)
-   - Magic numbers or strings (should be constants)
-   - Hardcoded values (should be configurable)
-   
-   - Check if changes follow cached patterns (no additional RAG needed)
+**For ALL file types, apply the review standards from Common.md:**
 
-**UI Files (.xib, .storyboard, .xml):**
-   - Check for constraint conflicts
-   - Verify outlet connections are valid
-   - Check for accessibility labels
-   - Ensure UI elements have proper identifiers
-   - Look for hardcoded sizes vs adaptive layouts
-
-**View Files (.swift for UIView subclasses, .jsx, .vue, .tsx):**
-   - **Pattern Violations:** Check instantiation patterns vs codebase conventions
-   - **Metrics:**
-     - Component >300 lines? Extract subcomponents
-     - >5 props/dependencies? Consider composition or config object
-     - Direct DOM manipulation in React/Vue? Use refs pattern
-   - Check delegate/callback patterns
-   - Verify proper initialization
-   - Check for UI updates on main thread (iOS/Android)
-   - Look for accessibility support (labels, roles, semantic HTML)
-   - Verify proper cleanup in deinit/componentWillUnmount
-   - State management: Are too many states being managed locally?
-
-**ViewModel/Presenter Files:**
-   - **Pattern Violations:** Check DI patterns, factory usage
-   - **Metrics:**
-     - Class >400 lines? Too many responsibilities?
-     - >10 public methods? Interface too broad?
-     - Business logic mixed with presentation logic?
-   - Check business logic correctness
-   - Verify error handling (try/catch, Result types)
-   - Check for proper separation of concerns
-   - Look for testability issues (hard dependencies, global state)
-   - Verify Observable/binding patterns match codebase
-   - Check for proper null/undefined handling
-   - Side effects properly isolated?
-
-**Model/Entity Files (.swift, .kt, .ts, .java):**
-   - **Pattern Violations:** Check naming conventions, serialization patterns
-   - **Metrics:**
-     - Model >200 lines? Should it be split?
-     - Mutable state that should be immutable?
-     - Missing validation logic?
-   - Check Codable/Serializable/JSON annotation implementation
-   - Verify field types and optionality match API contract
-   - Check for data validation (ranges, formats, required fields)
-   - Look for migration impacts (schema changes, breaking changes)
-   - Default values appropriate?
-   - Computed properties vs stored properties balance
-
-**Generated Files:**
-   - Quick scan to ensure generation is correct
-   - Don't deep review auto-generated code
-   - Flag if manual changes were made to generated files (HIGH severity)
-   - **Metrics:** Are generated files checked into version control when they shouldn't be?
-
-**Resource Files (.json, .strings, .xml, .yaml, .properties):**
-   - **Pattern Violations:** Check formatting/structure against codebase conventions
-   - **Metrics:**
-     - Duplicate keys (ERROR)
-     - Missing translations in locale files (flag incomplete i18n)
-     - >1000 lines in single JSON? Consider splitting
-   - Check for syntax errors
-   - Verify no duplicate keys
-   - Check for missing translations (compare with other locale files)
-   - Ensure proper formatting (indentation, structure)
-   - Sensitive data in config files? (passwords, tokens, keys) - HIGH severity
-   - Environment-specific values hardcoded?
+   **Step-by-step process:**
+   1. Read the COMPLETE file first (via GitHub API)
+   2. Get the diff patch for changed lines
+   3. Apply standards from **Common.md**:
+      - Pattern violations (DI, factories, singletons, async, styling, module boundaries)
+      - Severity classifications (HIGH/MEDIUM/LOW definitions)
+      - Senior developer metrics (code quality, architecture, safety, performance, maintainability)
+      - File-type specific checks (source code, UI files, views, ViewModels, models, tests, configs)
+      - Security checklist (injection, auth, secrets, crypto, input validation)
+      - Performance checklist (N+1, algorithms, memory, network)
+      - Test coverage expectations
+   4. Apply platform-specific guidelines (iOS.md, Web.md, etc.) if loaded
+   5. Apply RAG-learned patterns from Step 4 cache
+   6. Focus ONLY on changed lines in the diff
    
-**Test Files (*test*, *spec*, *Test.java, *Tests.swift):**
-   - **Pattern Violations:** Check test structure/patterns vs existing tests
-   - **Metrics:**
-     - Test coverage: Do new features have tests?
-     - Test >200 lines? Extract helper methods
-     - Are assertions clear and specific?
-     - Test names descriptive? (should read like documentation)
-   - Mock/stub patterns match codebase conventions?
-   - Proper setup/teardown?
-   - Tests for edge cases, not just happy path?
-   - Async tests properly handled (awaits, timeouts)?
-   - Tests actually test the changed code?
+   **Priority when conflicts arise:**
+   - Platform guidelines (iOS.md, Web.md) > Common.md > RAG patterns
+   - Common.md severity levels always apply
+   
+   **Use RAG sparingly:**
+   - Only for file-specific context if truly needed
+   - Check if context files being read
+   - Most checks should use CACHED knowledge from Step 4
 
 g. **Collect findings** with:
    - File path
@@ -539,12 +457,21 @@ h. **Collect findings for this file:**
    
 i. **Mark file as completed**:
    ```bash
+   echo "💰 [COST] File ${FILE_INDEX}/${TOTAL_FILES} complete"
    todo_write # mark file as "completed"
    ```
 
 j. **Move to next file** and repeat until all files reviewed
 
+```bash
+echo "💰 [COST] === STEP 5: FILE REVIEWS COMPLETE ==="
+```
+
 ### 6. Compile Comprehensive Review
+
+```bash
+echo "💰 [COST] === STEP 6: COMPILING REVIEW ==="
+```
 
 **After reviewing all files, organize findings:**
 - Group issues by severity (HIGH/MEDIUM/LOW)
@@ -664,6 +591,7 @@ connection = ConnectionFactory.create()
 
 ```bash
 echo "📤 SERVER: Posting review to GitHub"
+echo "💰 [COST] === STEP 7: POSTING REVIEW ==="
 ```
 
 **Step 9: Save formatted review**
@@ -686,10 +614,29 @@ Check exit code and confirm posting.
 echo "✅ SERVER: Review complete"
 ```
 
-**Step 12: Clean up**
+**Step 12: Clean up and display cost summary**
 ```bash
 rm -f review_comment.md pr_data.json changed_files.json
 todo_write: mark "post" as "completed"
+
+echo ""
+echo "💰 [COST] ========================================"
+echo "💰 [COST] REVIEW COMPLETE - COST SUMMARY"
+echo "💰 [COST] ========================================"
+LIBRARIAN_CALLS=$(cat /tmp/librarian_calls.txt)
+echo "💰 [COST] Total librarian calls: ${LIBRARIAN_CALLS}"
+echo "💰 [COST] Expected: 1 (pattern cache only)"
+if [ "$LIBRARIAN_CALLS" -gt 1 ]; then
+  echo "💰 [COST] ⚠️  WARNING: Extra librarian calls detected!"
+  echo "💰 [COST] This significantly increased costs"
+fi
+echo "💰 [COST] ========================================"
+echo "💰 [COST] Files reviewed:"
+echo "💰 [COST] - Deep: ${DEEP_COUNT} files"
+echo "💰 [COST] - Quick: ${QUICK_COUNT} files"
+echo "💰 [COST] - Skipped: ${SKIPPED_COUNT} files"
+echo "💰 [COST] ========================================"
+rm -f /tmp/pr_review_tokens_in.txt /tmp/pr_review_tokens_out.txt /tmp/librarian_calls.txt
 ```
 
 ## Best Practices

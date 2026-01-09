@@ -40,6 +40,12 @@ Extract from URL (e.g., `https://github.com/owner/repo/pull/123`):
 - Repository name  
 - PR number
 
+```bash
+echo "💰 [COST] Initializing cost tracking"
+echo "0" > /tmp/pr_review_grep_calls.txt
+echo "0" > /tmp/pr_review_finder_calls.txt
+```
+
 ### 2. Setup Temporary Directory
 
 **Check if repository already exists to avoid re-cloning:**
@@ -178,6 +184,14 @@ Use `todo_write` to create checklist items:
 ]
 ```
 
+**Log file classification:**
+```bash
+echo "💰 [COST] File classification complete:"
+echo "💰 [COST] - Auto-skipped: ${SKIPPED_COUNT} files"
+echo "💰 [COST] - Quick review: ${QUICK_COUNT} files"
+echo "💰 [COST] - Deep review: ${DEEP_COUNT} files"
+```
+
 Also generate the diff for reference:
 ```bash
 git diff origin/BASE_REF...pr-PR_NUMBER > pr_diff.txt
@@ -187,6 +201,7 @@ git diff origin/BASE_REF...pr-PR_NUMBER > pr_diff.txt
 
 ```bash
 echo "🔎 SERVER: Loading platform guidelines and caching patterns"
+echo "💰 [COST] === STEP 6: PATTERN CACHE START ==="
 ```
 
 Mark pattern-cache as in-progress:
@@ -208,22 +223,38 @@ GUIDELINES_DIR=".agents/guidelines"
 # - .kt, .java (Android) → Android
 # - .py → Python
 
+# ALWAYS load Common.md (universal review standards)
+GUIDELINE_SIZE=$(wc -w "$GUIDELINES_DIR/Common.md" | awk '{print $1}')
+GUIDELINE_TOKENS=$((GUIDELINE_SIZE * 4 / 3))
+echo "💰 [COST] Loading Common.md - Est tokens: ~${GUIDELINE_TOKENS}"
+cat "$GUIDELINES_DIR/Common.md"  # Universal review standards
+
 # For iOS files:
 if [ -f "$GUIDELINES_DIR/iOS.md" ]; then
+    GUIDELINE_SIZE=$(wc -w "$GUIDELINES_DIR/iOS.md" | awk '{print $1}')
+    GUIDELINE_TOKENS=$((GUIDELINE_SIZE * 4 / 3))
+    echo "💰 [COST] Loading iOS.md - Est tokens: ~${GUIDELINE_TOKENS}"
     cat "$GUIDELINES_DIR/iOS.md"  # Read and cache iOS-specific conventions
 fi
 
 # For Web/React files:
 if [ -f "$GUIDELINES_DIR/Web.md" ]; then
+    GUIDELINE_SIZE=$(wc -w "$GUIDELINES_DIR/Web.md" | awk '{print $1}')
+    GUIDELINE_TOKENS=$((GUIDELINE_SIZE * 4 / 3))
+    echo "💰 [COST] Loading Web.md - Est tokens: ~${GUIDELINE_TOKENS}"
     cat "$GUIDELINES_DIR/Web.md"  # Read and cache Web/React conventions
 fi
 
 # For Android files:
 if [ -f "$GUIDELINES_DIR/Android.md" ]; then
+    GUIDELINE_SIZE=$(wc -w "$GUIDELINES_DIR/Android.md" | awk '{print $1}')
+    GUIDELINE_TOKENS=$((GUIDELINE_SIZE * 4 / 3))
+    echo "💰 [COST] Loading Android.md - Est tokens: ~${GUIDELINE_TOKENS}"
     cat "$GUIDELINES_DIR/Android.md"
 fi
 
 # Store loaded guidelines in memory for use throughout review
+echo "💰 [COST] Guidelines loaded in context"
 ```
 
 **Step 6b: Use finder/grep to learn codebase patterns**
@@ -231,25 +262,40 @@ fi
 Since this skill has local clone, use file-based analysis to understand patterns:
 
 ```bash
+echo "💰 [COST] Discovering codebase patterns using grep/find..."
+
 # Search for DI patterns
+GREP_CALLS=$(cat /tmp/pr_review_grep_calls.txt)
+echo "$((GREP_CALLS + 1))" > /tmp/pr_review_grep_calls.txt
+echo "💰 [COST] Grep call #$((GREP_CALLS + 1)) - DI patterns"
 grep -r "container\.resolve\|inject\|@Inject" --include="*.swift" --include="*.kt" | head -20
 
 # Search for factory patterns  
+GREP_CALLS=$(cat /tmp/pr_review_grep_calls.txt)
+echo "$((GREP_CALLS + 1))" > /tmp/pr_review_grep_calls.txt
+echo "💰 [COST] Grep call #$((GREP_CALLS + 1)) - Factory patterns"
 grep -r "Factory\|Builder\.create" --include="*.swift" --include="*.kt" | head -20
 
 # Search for styling patterns
+GREP_CALLS=$(cat /tmp/pr_review_grep_calls.txt)
+echo "$((GREP_CALLS + 1))" > /tmp/pr_review_grep_calls.txt
+echo "💰 [COST] Grep call #$((GREP_CALLS + 1)) - Styling patterns"
 grep -r "@linaria\|@emotion" --include="*.jsx" --include="*.tsx" | head -20
 
 # Search for component patterns
+FINDER_CALLS=$(cat /tmp/pr_review_finder_calls.txt)
+echo "$((FINDER_CALLS + 1))" > /tmp/pr_review_finder_calls.txt
+echo "💰 [COST] Find call #$((FINDER_CALLS + 1)) - Component patterns"
 find . -name "*ViewController.swift" -o -name "*VM.swift" -o -name "*Coordinator.swift" | head -20
 
+echo "💰 [COST] Pattern discovery complete"
 # Store discovered patterns in memory
 ```
 
 **Combine guideline files + discovered patterns** for comprehensive review knowledge.
 
-Mark pattern-cache as completed:
 ```bash
+echo "💰 [COST] === STEP 6: PATTERN CACHE DONE ==="
 todo_write # mark "pattern-cache" as "completed"
 ```
 
@@ -257,6 +303,7 @@ todo_write # mark "pattern-cache" as "completed"
 
 ```bash
 echo "🔎 SERVER: Reviewing files"
+echo "💰 [COST] === STEP 7: FILE REVIEWS START ==="
 ```
 
 **DO NOT SKIP ANY FILES (except auto-skipped categories).**
@@ -265,12 +312,16 @@ Review files one by one, following this process for each file:
 
 a. **Mark each file as in-progress** before reviewing:
    ```bash
+   echo "💰 [COST] File ${FILE_INDEX}/${TOTAL_FILES}: ${FILE_PATH} (${REVIEW_TYPE})"
    todo_write # update file status to "in-progress"
    ```
 
 b. **Read the complete file** from the feature branch:
    ```bash
    Read tool with full file path
+   FILE_SIZE=$(wc -w <<< "$FILE_CONTENT" | awk '{print $1}')
+   FILE_TOKENS=$((FILE_SIZE * 4 / 3))
+   echo "💰 [COST] File content loaded - Est tokens: ~${FILE_TOKENS}"
    ```
 
 c. **Get the diff** to see what changed:
@@ -281,10 +332,11 @@ c. **Get the diff** to see what changed:
 d. **Use cached patterns and guidelines:**
    
    **Apply CACHED knowledge from Step 6:**
-   - **Guideline files** (iOS.md, Web.md, etc.) - explicit team conventions
+   - **Common.md** - Universal review standards (always loaded)
+   - **Platform guidelines** (iOS.md, Web.md, etc.) - explicit team conventions
    - **Discovered patterns** (from grep/find) - codebase patterns
    
-   **Priority:** Guideline files take precedence over discovered patterns
+   **Priority:** Platform guidelines > Common.md > discovered patterns
 
 e. **Analyze based on file type and depth:**
 
@@ -295,70 +347,33 @@ e. **Analyze based on file type and depth:**
    - Broken links in markdown
    - **Skip deep analysis** - <10 seconds per file
 
-**DEEP REVIEW FILES** (source code, tests):
+**DEEP REVIEW FILES** (source code, tests, critical configs):
 
-**Source Code Files (.swift, .kt, .java, .ts, .jsx, .py, .go, etc.):**
-   - Read entire file with full context
-   - **Check for pattern violations** (using CACHED patterns from Step 6):
-     - ❌ DI container bypassed: Direct instantiation vs container/injection
-     - ❌ Factory pattern ignored: `new Object()` when factory exists
-     - ❌ Singleton violations: Direct construction vs singleton pattern
-     - ❌ Styling violations: Emotion when Linaria is standard
-     - ❌ Module boundary violations: `common/` importing from `Apps/`
-   - **Senior developer metrics:**
-     - Complexity (>50 lines, >3 nesting)
-     - Code duplication
-     - Naming conventions
-     - Function parameters (>4 → suggest config object)
-   - **Safety checks:**
-     - Thread safety, memory leaks
-     - Null/undefined handling
-     - Error handling completeness
-   - Read imported files for context if needed
-   - Check if changes follow cached patterns
+**For ALL file types, apply the review standards from Common.md:**
 
-**UI Files (.xib, .storyboard, .xml):**
-   - Check for constraint conflicts
-   - Verify outlet connections are valid
-   - Check for accessibility labels
-   - Ensure UI elements have proper identifiers
-   - Look for hardcoded sizes vs adaptive layouts
-
-**View Files (.swift for UIView subclasses, .jsx, .vue):**
-   - Check delegate/callback patterns
-   - Verify proper initialization
-   - Check for UI updates on main thread
-   - Look for accessibility support
-   - Verify proper cleanup in deinit/componentWillUnmount
-
-**ViewModel/Presenter Files:**
-   - Check business logic correctness
-   - Verify error handling
-   - Check for proper separation of concerns
-   - Look for testability issues
-   - Verify Observable/binding patterns
-
-**Model/Entity Files (.swift, .kt, .ts):**
-   - Check Codable/Serializable implementation
-   - Verify field types and optionality
-   - Check for data validation
-   - Look for migration impacts
-
-**Generated Files:**
-   - Quick scan to ensure generation is correct
-   - Don't deep review auto-generated code
-   - Flag if manual changes were made to generated files
-
-**Resource Files (.json, .strings, .xml):**
-   - Check for syntax errors
-   - Verify no duplicate keys
-   - Check for missing translations
-   - Ensure proper formatting
-
-**Configuration Files (project.pbxproj, build.gradle):**
-   - Check for unintended changes
-   - Verify new files are properly added
-   - Check for dependency version changes
+   **Step-by-step process:**
+   1. Read entire file with full context
+   2. Get the diff to see what changed
+   3. Apply standards from **Common.md**:
+      - Pattern violations (DI, factories, singletons, async, styling, module boundaries)
+      - Severity classifications (HIGH/MEDIUM/LOW definitions)
+      - Senior developer metrics (code quality, architecture, safety, performance, maintainability)
+      - File-type specific checks (source code, UI files, views, ViewModels, models, tests, configs)
+      - Security checklist (injection, auth, secrets, crypto, input validation)
+      - Performance checklist (N+1, algorithms, memory, network)
+      - Test coverage expectations
+   4. Apply platform-specific guidelines (iOS.md, Web.md, etc.) if loaded
+   5. Apply discovered patterns from grep/find (Step 6 cache)
+   6. Focus ONLY on changed lines in the diff
+   
+   **Priority when conflicts arise:**
+   - Platform guidelines (iOS.md, Web.md) > Common.md > discovered patterns
+   - Common.md severity levels always apply
+   
+   **Read imported files for context if needed (log each read):**
+   ```bash
+   echo "💰 [COST] Reading context file: ${CONTEXT_FILE}"
+   ```
    - Flag any unusual modifications
 
 f. **Collect findings for this file:**
@@ -373,12 +388,21 @@ f. **Collect findings for this file:**
 
 g. **Mark file as completed** after review:
    ```bash
+   echo "💰 [COST] File ${FILE_INDEX}/${TOTAL_FILES} complete"
    todo_write # update file status to "completed"
    ```
 
 h. **Move to next file** and repeat until all files reviewed
 
+```bash
+echo "💰 [COST] === STEP 7: FILE REVIEWS COMPLETE ==="
+```
+
 ### 8. Compile Comprehensive Review
+
+```bash
+echo "💰 [COST] === STEP 8: COMPILING REVIEW ==="
+```
 
 After reviewing all files:
 - Group findings by severity (HIGH/MEDIUM/LOW)
@@ -750,18 +774,43 @@ Repo path: /Users/.../housing-app
 - Format for GitHub
 
 **Step 9: Post review to GitHub (MANDATORY)**
+
+```bash
+echo "📤 SERVER: Posting review to GitHub"
+echo "💰 [COST] === STEP 9: POSTING REVIEW ==="
+```
+
 - Mark "Post review to GitHub PR" as in-progress
 - Save formatted review to `review_comment.md`
-- ```bash
-  echo "📤 SERVER: Posting review to GitHub"
-  ```
 - Use `gh pr comment PR_NUMBER --repo OWNER/REPO --body-file review_comment.md`
 - Verify comment posted successfully
-- ```bash
-  echo "✅ SERVER: Review complete"
-  ```
-- Clean up review file
-- Mark "Post review to GitHub PR" as completed
+
+```bash
+echo "✅ SERVER: Review complete"
+```
+
+- Clean up and display cost summary:
+
+```bash
+rm -f review_comment.md
+todo_write: mark "post" as "completed"
+
+echo ""
+echo "💰 [COST] ========================================"
+echo "💰 [COST] REVIEW COMPLETE - COST SUMMARY"
+echo "💰 [COST] ========================================"
+GREP_CALLS=$(cat /tmp/pr_review_grep_calls.txt)
+FINDER_CALLS=$(cat /tmp/pr_review_finder_calls.txt)
+echo "💰 [COST] Grep calls: ${GREP_CALLS}"
+echo "💰 [COST] Finder calls: ${FINDER_CALLS}"
+echo "💰 [COST] ========================================"
+echo "💰 [COST] Files reviewed:"
+echo "💰 [COST] - Deep: ${DEEP_COUNT} files"
+echo "💰 [COST] - Quick: ${QUICK_COUNT} files"
+echo "💰 [COST] - Skipped: ${SKIPPED_COUNT} files"
+echo "💰 [COST] ========================================"
+rm -f /tmp/pr_review_grep_calls.txt /tmp/pr_review_finder_calls.txt
+```
 
 ### Use the Oracle Tool
 
