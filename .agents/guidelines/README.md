@@ -1,10 +1,11 @@
-# Platform-Specific Guidelines
+# Platform-Specific Guidelines (Shared)
 
 This directory contains platform and language-specific coding conventions and patterns.
+**Location:** `.agents/guidelines/` (shared across all PR review skills)
 
 ## Purpose
 
-These guideline files provide explicit, documented conventions that supplement the RAG-learned patterns. They help the PR review skill:
+These guideline files provide explicit, documented conventions that supplement the RAG/pattern-learned data. They help **both** PR review skills (`pr-review` and `pr-review-rag`):
 
 1. **Catch pattern violations** with concrete examples
 2. **Provide consistent feedback** based on documented standards
@@ -26,12 +27,20 @@ Guidelines are automatically loaded based on file extensions in the PR:
 
 ## How It Works
 
+**Both skills (`pr-review` and `pr-review-rag`) use these guidelines:**
+
 When reviewing a PR:
 
 1. **Step 1:** Skill analyzes file extensions in changed files
-2. **Step 2:** Loads relevant guideline files (e.g., iOS.md for .swift files)
-3. **Step 3:** Combines guidelines + RAG patterns for comprehensive review
+2. **Step 2:** Loads relevant guideline files from `.agents/guidelines/`
+   - iOS files → Loads `iOS.md`
+   - React/JS files → Loads `Web.md`
+   - etc.
+3. **Step 3:** Combines guidelines with learned patterns:
+   - `pr-review-rag`: Guidelines + RAG patterns (via librarian)
+   - `pr-review`: Guidelines + grep/find discovered patterns (local repo)
 4. **Step 4:** Flags violations with examples from guideline files
+5. **Step 5:** References guideline files in review comments
 
 ## Creating New Guidelines
 

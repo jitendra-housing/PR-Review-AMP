@@ -142,12 +142,11 @@ Based on file extensions in the PR, load relevant platform-specific guidelines:
 # - .py → Python
 # - .go → Go
 
-# Load guideline files from .agents/skills/pr-review-rag/guidelines/
+# Load guideline files from shared .agents/guidelines/ directory
 # Example: If .swift files present, read iOS.md
 
-# Check if guideline file exists:
-SKILL_DIR="$(dirname "$(readlink -f "$0")")"  # Get skill directory
-GUIDELINES_DIR="$SKILL_DIR/guidelines"
+# Guidelines are shared across pr-review and pr-review-rag skills
+GUIDELINES_DIR=".agents/guidelines"
 
 # For iOS files:
 if [ -f "$GUIDELINES_DIR/iOS.md" ]; then
@@ -603,7 +602,7 @@ let vc = EMIBreakupBottomSheetVC()
 let vc = container.resolve(EMIBreakupBottomSheetVC.self)
 ```
 
-**Note:** This pattern is documented in `.agents/skills/pr-review-rag/guidelines/iOS.md`
+**Note:** This pattern is documented in `.agents/guidelines/iOS.md`
 
 **Line 78**: Factory pattern not used
 - **Issue**: Direct instantiation when factory pattern exists in codebase
@@ -834,9 +833,10 @@ todo_write # mark pattern-cache as in-progress
 # Example: If .swift files → Load iOS.md
 # Example: If .kt files → Load Android.md
 
-# STEP 2: Read guideline files
-# Check .agents/skills/pr-review-rag/guidelines/iOS.md (if iOS files)
-# Check .agents/skills/pr-review-rag/guidelines/Android.md (if Android files)
+# STEP 2: Read guideline files from shared location
+# Check .agents/guidelines/iOS.md (if iOS files)
+# Check .agents/guidelines/Web.md (if React/JS files)
+# Check .agents/guidelines/Android.md (if Android files)
 # Store guideline content in memory
 
 # STEP 3: Query RAG for codebase patterns
