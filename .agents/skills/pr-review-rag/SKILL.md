@@ -60,7 +60,7 @@ Extract from JSON:
 - `body` (PR description)
 - `user.login` (PR author)
 
-### 3. Get List of Changed Files and Create Checklist
+### 3. Get List of Changed Files and Classify by Priority
 
 Get PR diff to find all changed files:
 
@@ -76,58 +76,199 @@ Parse JSON to extract:
 - `deletions` (lines deleted)
 - `patch` (the actual diff)
 
-**CRITICAL: Create a TODO checklist with ALL files before starting review:**
+**CRITICAL: Classify files by review depth to optimize costs:**
 
-Use `todo_write` to create a checklist item for EVERY file PLUS the GitHub posting step:
+**AUTO-SKIP (don't review, don't add to TODO):**
+- Package locks: `package-lock.json`, `yarn.lock`, `Podfile.lock`, `Gemfile.lock`, `pnpm-lock.yaml`, `composer.lock`
+- Generated files: `*.generated.*`, `*.g.dart`, `*.g.kt`, `*.g.swift`, `.pb.go`, `*_pb2.py`, `*.pb.h`
+- Vendored/dependencies: files in `vendor/`, `node_modules/`, `Pods/`, `.build/`, `third_party/`
+- Binary/assets: `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.ttf`, `.woff`, `.woff2`, `.ico`
+- Build artifacts: `.xcworkspace/*`, `.xcodeproj/xcuserdata/`, `.gradle/`, `build/`
+
+**QUICK REVIEW (pattern check only, <10 sec):**
+- Resource files: `.json`, `.xml`, `.yaml`, `.yml`, `.strings`, `.properties`, `.plist`
+- Documentation: `.md`, `.txt`, `.rst`
+- Config files (non-sensitive): `.gitignore`, `.eslintrc`, `tsconfig.json`
+
+**DEEP REVIEW (full RAG + metrics):**
+- Source code: `.swift`, `.kt`, `.java`, `.ts`, `.tsx`, `.js`, `.jsx`, `.py`, `.go`, `.rb`, `.php`, `.cs`, `.cpp`, `.c`, `.h`, `.m`, `.scala`, `.rs`
+- UI code: `.xib`, `.storyboard`, `.vue`, `.svelte`, `.html` (with logic)
+- Tests: Files matching `*test*`, `*spec*`, `*Test.java`, `*Tests.swift`, `*_test.go`, `*_test.py`, `*.spec.ts`
+- Critical configs: `.env`, API configs, security/auth configs, database schemas, migrations
+
+**Create a TODO checklist with categorized files:**
+
+Use `todo_write` to create checklist items:
 ```json
 [
-  {"id": "f1", "content": "Review: path/to/file1.swift", "status": "todo"},
-  {"id": "f2", "content": "Review: path/to/file2.swift", "status": "todo"},
-  {"id": "f3", "content": "Review: path/to/file3.xib", "status": "todo"},
+  {"id": "pattern-cache", "content": "Cache codebase patterns using RAG", "status": "todo"},
+  {"id": "f1", "content": "DEEP: path/to/file1.swift", "status": "todo"},
+  {"id": "f2", "content": "QUICK: config.json", "status": "todo"},
+  {"id": "f3", "content": "DEEP: path/to/file3.kt", "status": "todo"},
   ...,
   {"id": "post", "content": "Post review to GitHub PR", "status": "todo"}
 ]
 ```
 
-### 4. Review EVERY File Using Sub-Agents + RAG
+**Note skipped files in review summary:**
+```
+⏭️ Skipped files (auto-generated, lock files, binaries): 15 files
+```
+
+### 4. Cache Codebase Patterns Using RAG (One-Time Cost)
 
 ```bash
-echo "🔎 SERVER: Review start"
+echo "🔎 SERVER: Learning codebase patterns"
 ```
 
-**DO NOT SKIP ANY FILES.** Use parallel sub-agents for efficient review:
+**CRITICAL: Learn all patterns ONCE at the start to avoid repeated RAG queries**
 
-**Step 1: Group files into batches**
-
-Group files by category for parallel processing:
-- Swift/Kotlin/Java source files (batch size: 5-10 files)
-- UI files (.xib, .storyboard, .xml)
-- Resource files (strings, images, JSON)
-- Generated files (quick verification only)
-- Configuration files
-
-**Step 2: Launch sub-agents in parallel**
-
-For each batch, launch a Task sub-agent with:
-- List of files to review
-- PR diff patches for those files
-- Instructions on what to check
-- **CRITICAL**: Explicit instruction to ONLY collect findings, NOT post to GitHub
-
-**Example:**
-```
-Task 1: Review Swift files f1-f10
-
-IMPORTANT: 
-- DO NOT post to GitHub
-- DO NOT use gh pr comment
-- ONLY collect findings and return them to me
-- I will post the consolidated review
-
-Files to review: [f1-f10]
+Mark pattern-cache as in-progress:
+```bash
+todo_write # mark "pattern-cache" as "in-progress"
 ```
 
-**Step 3: Each sub-agent must:**
+**Step 4a: Detect platforms and load guideline files**
+
+Based on file extensions in the PR, load relevant platform-specific guidelines:
+
+```bash
+# Analyze file extensions from changed_files.json
+# Detect platforms:
+# - .swift, .m, .h, .xib, .storyboard → iOS
+# - .jsx, .tsx, .js (frontend) → Web/React
+# - .kt, .java (Android context) → Android
+# - .ts (backend) → Node.js
+# - .py → Python
+# - .go → Go
+
+# Load guideline files from .agents/skills/pr-review-rag/guidelines/
+# Example: If .swift files present, read iOS.md
+
+# Check if guideline file exists:
+SKILL_DIR="$(dirname "$(readlink -f "$0")")"  # Get skill directory
+GUIDELINES_DIR="$SKILL_DIR/guidelines"
+
+# For iOS files:
+if [ -f "$GUIDELINES_DIR/iOS.md" ]; then
+    cat "$GUIDELINES_DIR/iOS.md"  # Read and cache iOS-specific conventions
+fi
+
+# For Android files:
+if [ -f "$GUIDELINES_DIR/Android.md" ]; then
+    cat "$GUIDELINES_DIR/Android.md"
+fi
+
+# For Web/React files:
+if [ -f "$GUIDELINES_DIR/Web.md" ]; then
+    cat "$GUIDELINES_DIR/Web.md"
+fi
+
+# Store loaded guidelines in memory for use throughout review
+```
+
+**Platform detection mapping:**
+- **iOS:** `.swift`, `.m`, `.h`, `.xib`, `.storyboard` → Load `iOS.md`
+- **Web/React:** `.jsx`, `.tsx`, `.js` (frontend) → Load `Web.md`
+- **Android:** `.kt`, `.java` (if Android project) → Load `Android.md`
+- **Node.js:** `.ts` (backend context) → Load `Node.md`
+- **Python:** `.py` → Load `Python.md`
+- **Go:** `.go` → Load `Go.md`
+
+**Step 4b: Ask RAG these questions ONCE and cache results:**
+
+```
+Use librarian to ask: "Analyze this codebase and provide comprehensive patterns that a senior developer would check:
+
+1. DEPENDENCY INJECTION PATTERNS:
+   - How are classes/ViewModels/Controllers instantiated?
+   - DI container usage: container.resolve() vs direct initialization
+   - Factory patterns: Builder.create() vs new Object()
+   - Service locators: ServiceRegistry.get() vs manual instantiation
+   - Singleton access: Manager.shared vs Manager()
+   - Show concrete examples with before/after patterns
+
+2. NAMING CONVENTIONS:
+   - Variable naming (camelCase, snake_case, PascalCase)
+   - Class/interface/file naming patterns
+   - Constant naming (UPPER_CASE, kConstant, etc.)
+   - Function/method naming conventions
+   - Prefixes/suffixes used (I-, Base-, -Protocol, -Delegate, etc.)
+   - Show examples of correct naming in this codebase
+
+3. ERROR HANDLING PATTERNS:
+   - How are errors handled? (try/catch, Result types, throws, etc.)
+   - Error propagation patterns
+   - Logging patterns and levels
+   - User-facing vs internal errors
+   - Show examples of proper error handling
+
+4. CODE ORGANIZATION:
+   - Typical function/method sizes (lines per method)
+   - Typical class sizes (lines per file)
+   - Architecture pattern (MVC, MVVM, VIPER, Clean, etc.)
+   - Folder/module organization
+   - Separation of concerns patterns
+   - Show examples of well-structured code
+
+5. MODULE/IMPORT PATTERNS:
+   - How are modules imported? (import { factory } vs direct class)
+   - Internal vs external dependencies
+   - Lazy loading patterns
+   - Show examples of proper imports
+
+6. COMMON CODE PATTERNS:
+   - Async/await vs callbacks vs promises
+   - Null/optional handling patterns
+   - Constants vs magic numbers
+   - Configuration management
+   - Date/time handling
+   - String formatting
+   - Show examples from this codebase
+
+7. TEST PATTERNS (if tests exist):
+   - Test naming conventions
+   - Mock/stub patterns
+   - Assertion styles
+   - Test organization (Arrange-Act-Assert, Given-When-Then)
+   - Show examples of good tests
+
+Provide concrete code examples from this repository for each pattern."
+```
+
+**Store the comprehensive response in memory for use throughout the review.**
+
+This cached knowledge acts like a senior developer's mental model of "how we do things here".
+
+**Step 4c: Combine guideline files + RAG patterns**
+
+You now have TWO sources of pattern knowledge:
+1. **Guideline files** (explicit, documented, project-specific) - e.g., iOS.md
+2. **RAG patterns** (learned from codebase analysis)
+
+**Priority when reviewing:**
+- Guideline files take precedence (explicit team conventions)
+- RAG patterns supplement where guidelines don't cover
+- If conflict, use guideline files and note the discrepancy
+
+Mark pattern-cache as completed:
+```bash
+todo_write # mark "pattern-cache" as "completed"
+```
+
+### 5. Review Files Sequentially (No Sub-Agents)
+
+```bash
+echo "🔎 SERVER: Reviewing files sequentially"
+```
+
+**DO NOT SKIP ANY FILES (except auto-skipped categories).**
+
+**Review files one by one in this order:**
+1. DEEP review files first (source code, tests, critical configs)
+2. QUICK review files last (resources, docs)
+
+**For each file:**
 
 a. **Mark each file as in-progress** before reviewing:
    ```bash
@@ -142,44 +283,75 @@ b. **CRITICAL: Get complete file content first:**
    
    **IMPORTANT**: You MUST read the full file to verify what exists. NEVER make claims about missing code without seeing the complete file.
 
-c. **Use RAG to understand context:**
-   - Ask RAG about the file's purpose and patterns
-   - Ask RAG about related files (imports, dependencies)
-   - Ask RAG about conventions used in similar files
-
-d. **CRITICAL: Learn codebase-specific patterns using RAG:**
+c. **Use cached patterns and limited RAG queries:**
    
-   Before analyzing changes, use RAG to understand how this codebase handles common patterns:
+   **Use the CACHED knowledge from Step 4** - already in memory:
    
-   **Pattern Discovery Questions:**
-   - "How does this codebase handle object/class instantiation?"
-   - "What dependency injection patterns are used in this codebase?"
-   - "How are ViewModels/Controllers/Services typically created?"
-   - "What are the common initialization patterns in files similar to [FILE_PATH]?"
-   - "Show me examples of how [IMPORTED_CLASS/MODULE] is typically used in this codebase"
-   - "What are typical function/method sizes in similar files?"
-   - "How does this codebase structure error handling?"
-   - "What naming conventions are used for variables/functions/classes?"
-   - "How are tests typically written in this codebase?"
+   **Source 1: Platform Guideline Files** (if loaded)
+   - Explicit, documented conventions from iOS.md, Android.md, etc.
+   - Concrete code examples of ✅ CORRECT vs ❌ WRONG patterns
+   - Severity levels for each violation type
+   - **Use these FIRST** - they're the source of truth
    
-   **Look for codebase conventions like:**
-   - Dependency injection patterns (e.g., container.resolve() vs direct initialization)
-   - Factory patterns (e.g., Builder.create() vs new Object())
-   - Service locators (e.g., ServiceRegistry.get() vs manual instantiation)
-   - Module patterns (e.g., import { factory } from 'module' vs direct class usage)
-   - Singleton access patterns (e.g., Manager.shared vs Manager())
-   - Error handling patterns (try/catch, Result types, error propagation)
-   - Naming conventions (camelCase, PascalCase, snake_case, prefixes/suffixes)
-   - Code organization (file structure, class sizes, method lengths)
+   **Source 2: RAG-Learned Patterns**
+   - **DI patterns:** container.resolve() vs direct initialization
+   - **Factory patterns:** Builder.create() vs new Object()
+   - **Service locators:** ServiceRegistry.get() vs manual instantiation  
+   - **Singleton access:** Manager.shared vs Manager()
+   - **Module patterns:** import { factory } from 'module' vs direct class usage
+   - **Naming conventions:** camelCase, PascalCase, snake_case, prefixes/suffixes
+   - **Error handling:** try/catch, Result types, error propagation
+   - **Code organization:** file structure, class sizes, method lengths
+   - **Async patterns:** async/await vs callbacks vs promises
+   - **Null handling:** optional chaining, guard statements, etc.
+   - **Test patterns:** naming, mocks, assertions
    
-   **Why this matters:**
+   **Only ask RAG for file-specific context (if needed for DEEP review):**
+   - "What is the purpose of [FILE_PATH]?"
+   - "What files import/depend on [FILE_PATH]?"
+   - "Show me other files with similar responsibility"
+   
+   **For QUICK review files:**
+   - Skip RAG queries entirely
+   - Just apply basic checks (syntax, duplicates, sensitive data)
+   
+   **Apply cached patterns to detect violations:**
    The PR changes might introduce code that works but violates established patterns.
-   For example:
-   - ❌ `let vc = MyViewController()` when codebase uses `container.resolve(MyViewController.self)`
-   - ❌ `new UserService()` when codebase uses `ServiceFactory.getUserService()`
-   - ❌ `createConnection()` when codebase uses `ConnectionPool.acquire()`
    
-   **Action:** Store the learned patterns for this file type/module to compare against changes.
+   **Examples of pattern violations to catch (with severity):**
+   
+   **HIGH Severity - Architectural Pattern Violations:**
+   
+   DI Container violations (any language):
+   - ❌ iOS: `let vc = MyViewController()` when patterns show `container.resolve(MyViewController.self)`
+   - ❌ Java/Kotlin: `new UserService()` when patterns show `@Inject UserService` or `ServiceFactory.create()`
+   - ❌ TypeScript: `new AuthService()` when patterns show `inject(AuthService)` or `useService()`
+   - ❌ Python: `EmailSender()` when patterns show `container.get(EmailSender)`
+   
+   Factory/Builder violations (any language):
+   - ❌ Direct instantiation when factory exists: `new Connection()` vs `ConnectionFactory.create()`
+   - ❌ Not using builder pattern: `new Config(a,b,c,d,e)` vs `ConfigBuilder().withA().withB().build()`
+   
+   Singleton violations (any language):
+   - ❌ iOS: `DatabaseManager()` when patterns show `DatabaseManager.shared`
+   - ❌ Java: `new Logger()` when patterns show `Logger.getInstance()`
+   - ❌ JavaScript: `new ApiClient()` when patterns show `ApiClient.instance`
+   
+   Async pattern violations (any language):
+   - ❌ Using callbacks when codebase uses async/await or Promises
+   - ❌ Blocking calls when codebase uses non-blocking patterns
+   
+   **Why HIGH:** These break dependency injection, reduce testability, violate architecture
+   
+   **MEDIUM Severity - Convention Violations:**
+   - ❌ Naming: `error_handler` vs `errorHandler` (violates codebase naming convention)
+   - ❌ Magic numbers: `86400` vs `SECONDS_PER_DAY` or `Duration.ofDays(1)`
+   - ❌ Null handling: Force unwrap when codebase uses safe patterns
+   - ❌ Import styles: Different import format than codebase uses
+   
+   **Why MEDIUM:** These affect readability and maintainability but don't break architecture
+   
+   **Action:** Compare ALL changes against cached patterns - this is the core value of senior review.
 
 e. **Analyze the diff patch** to see what changed
 
@@ -188,21 +360,43 @@ f. **Verify before reporting issues:**
    - Confirm the problem is actually in the changed lines
    - Don't assume missing code - verify by reading the file
 
-g. **Review based on file type:**
+g. **Review based on file type and depth:**
 
 **GOLDEN RULE**: Only comment on code that is ACTUALLY CHANGED in the diff. If something exists elsewhere in the file but wasn't modified, DON'T flag it.
 
-**Swift/Kotlin/Java Files (.swift, .kt, .java):**
+**QUICK REVIEW FILES** (resources, docs):
+   - Syntax errors (JSON/YAML/XML validation)
+   - Duplicate keys in JSON/YAML
+   - Sensitive data (passwords, tokens, API keys) - HIGH severity
+   - Broken links in markdown
+   - Missing translations (compare with other locale files)
+   - **Skip all other checks** - no RAG, no metrics, no deep analysis
+   - **Should take <10 seconds per file**
+
+**DEEP REVIEW FILES** (source code, tests, critical configs):
+
+**Source Code Files (all languages - .swift, .kt, .java, .ts, .py, .go, etc.):**
    - Read the COMPLETE file first (via GitHub API)
-   - Use RAG to understand file context and dependencies
+   - Use RAG sparingly (only file-specific context if unclear)
    - Focus ONLY on the lines that changed in the diff
    
-   **CRITICAL: Check for pattern violations:**
-   - ❌ Direct instantiation when DI container is used: `let vc = MyVC()` vs `container.resolve(MyVC.self)`
-   - ❌ Manual service creation when factory exists: `new Service()` vs `ServiceFactory.create()`
-   - ❌ Direct singleton access when pattern differs: `Manager()` vs `Manager.shared`
-   - Compare changed lines against learned patterns from RAG
-   - Flag any deviation from codebase conventions with MEDIUM/HIGH severity
+   **CRITICAL: Check for pattern violations (using CACHED patterns):**
+   
+   **HIGH severity violations:**
+   - ❌ DI container bypassed: Direct instantiation vs container/injection pattern
+   - ❌ Factory pattern ignored: `new Object()` when factory/builder exists
+   - ❌ Singleton pattern violated: Direct construction when singleton pattern used
+   - ❌ Async pattern mismatch: Callbacks when codebase uses async/await
+   
+   **MEDIUM severity violations:**
+   - ❌ Naming convention: `snake_case` vs `camelCase` (or vice versa)
+   - ❌ Magic numbers: Hardcoded values vs named constants
+   - ❌ Import style: Different format than codebase standard
+   - ❌ Null handling: Unsafe vs safe patterns used in codebase
+   
+   Compare changed lines against **CACHED patterns from Step 4**
+   - **Architecture/DI violations = HIGH** (breaks testability, consistency, architecture)
+   - **Convention violations = MEDIUM** (readability, maintainability)
    
    **Senior Developer Metrics - Code Quality:**
    - **Complexity:** Is the method >50 lines? Are there >3 levels of nesting? Flag with LOW severity, suggest refactoring
@@ -219,12 +413,12 @@ g. **Review based on file type:**
    - **Testability:** Can this code be tested? Are dependencies injectable?
    
    **Senior Developer Metrics - Safety & Performance:**
-   - Thread safety (async operations, shared state, race conditions)
-   - Memory leaks (retain cycles, weak references, closures capturing self)
-   - Force unwraps and optional handling (use guard/if-let patterns)
-   - Error handling completeness (try/catch, Result types, nil checks)
-   - N+1 queries or inefficient loops (check database/API calls in loops)
-   - Memory allocations in hot paths (large objects created repeatedly)
+   - Thread safety (async operations, shared state, race conditions, concurrent access)
+   - Memory leaks (circular refs, event listener cleanup, closure captures, resource disposal)
+   - Null/undefined handling (safe patterns used in codebase: Optional, ?, ??, guard, etc.)
+   - Error handling completeness (try/catch, Result types, error propagation per codebase pattern)
+   - N+1 queries or inefficient loops (database/API calls in loops, missing batch operations)
+   - Memory allocations in hot paths (large objects created repeatedly, string concatenation in loops)
    
    **Senior Developer Metrics - Maintainability:**
    - API usage patterns (deprecated APIs, wrong lifecycle methods)
@@ -233,8 +427,7 @@ g. **Review based on file type:**
    - Magic numbers or strings (should be constants)
    - Hardcoded values (should be configurable)
    
-   - Ask RAG about imported modules to understand integration points
-   - Check if changes follow existing patterns (ask RAG)
+   - Check if changes follow cached patterns (no additional RAG needed)
 
 **UI Files (.xib, .storyboard, .xml):**
    - Check for constraint conflicts
@@ -335,31 +528,29 @@ g. **Collect findings** with:
      - Safety: Thread safety, memory leaks, error handling, performance
      - Maintainability: Documentation, magic values, hardcoded config
 
-h. **Mark file as completed**:
+h. **Collect findings for this file:**
+   - File path
+   - Line number (from patch - ONLY changed lines)
+   - Severity (use these guidelines):
+     - **HIGH**: Security issues, architectural pattern violations (DI, factories, singletons, async), memory leaks, data loss, SQL injection, XSS
+     - **MEDIUM**: Convention violations (naming, constants), code complexity, missing error handling, missing null checks
+     - **LOW**: Code style preferences, minor optimizations, documentation suggestions, comment improvements
+   - Description of issue
+   - Suggested fix
+   
+i. **Mark file as completed**:
    ```bash
    todo_write # mark file as "completed"
    ```
 
-i. **CRITICAL: Return findings to main agent (DO NOT POST TO GITHUB)**
-   - Sub-agents MUST return all findings as JSON or structured text
-   - Sub-agents NEVER use `gh pr comment` or post to GitHub
-   - Only the main agent posts the final consolidated review
+j. **Move to next file** and repeat until all files reviewed
 
-**Step 4: Monitor progress in real-time**
-- Each sub-agent updates the shared TODO checklist
-- Use todo_read periodically to check progress
-- Watch for completion of all file reviews
+### 6. Compile Comprehensive Review
 
-**Step 5: Verify completion**
-- Run todo_read to ensure all files marked "completed"
-- If any files remain "todo" or "in-progress", investigate
-
-### 5. Compile Comprehensive Review
-
-**Step 6: Collect findings from all sub-agents**
-- Aggregate all issues from sub-agent responses
-- Deduplicate similar issues
-- Organize by severity (HIGH/MEDIUM/LOW)
+**After reviewing all files, organize findings:**
+- Group issues by severity (HIGH/MEDIUM/LOW)
+- Group by file
+- Deduplicate similar issues across files
 
 **Step 7: Generate comprehensive review**
 
@@ -377,6 +568,15 @@ ${SYNC_STATUS_WARNING_IF_BEHIND}
 
 ---
 
+## 📊 Review Statistics
+
+- **Deep reviewed**: 12 files (source code, tests, critical configs)
+- **Quick reviewed**: 5 files (resources, docs)
+- **Skipped**: 15 files (lock files, generated, binaries)
+- **Total files in PR**: 32 files
+
+---
+
 ## Summary
 
 ${OVERALL_SUMMARY}
@@ -390,18 +590,31 @@ ${OVERALL_SUMMARY}
 
 ### File: path/to/file.swift
 
-**Line 45-52**: Potential memory leak
-- **Issue**: Strong reference cycle between ViewController and closure
-- **Impact**: Memory will not be released, leading to leaks
-- **Fix**: Use `[weak self]` in closure capture list
+**Line 45**: Direct instantiation - DI pattern violation
+- **Issue**: `EMIBreakupBottomSheetVC()` instantiated directly instead of using `container.resolve`
+- **Impact**: Violates dependency injection pattern, reduces testability, inconsistent with codebase architecture
+- **Reference**: See iOS.md guidelines - "Dependency Injection" section
+- **Fix**: Use dependency injection container as per guidelines
 ```swift
-// Current
-someMethod { self.doSomething() }
+// Current (❌ WRONG - from iOS.md)
+let vc = EMIBreakupBottomSheetVC()
 
-// Suggested
-someMethod { [weak self] in
-    self?.doSomething()
-}
+// Suggested (✅ CORRECT - from iOS.md)
+let vc = container.resolve(EMIBreakupBottomSheetVC.self)
+```
+
+**Note:** This pattern is documented in `.agents/skills/pr-review-rag/guidelines/iOS.md`
+
+**Line 78**: Factory pattern not used
+- **Issue**: Direct instantiation when factory pattern exists in codebase
+- **Impact**: Inconsistent with codebase patterns, harder to test and maintain
+- **Fix**: Use factory pattern
+```
+// Current (❌ Pattern violation)
+connection = new DatabaseConnection()
+
+// Suggested (✅ Follows codebase pattern)
+connection = ConnectionFactory.create()
 ```
 
 ---
@@ -503,81 +716,49 @@ This skill mimics how an experienced developer reviews code:
 11. **Consider maintainability** - Will the next developer understand this in 6 months?
 12. **Provide actionable feedback** - Not just "this is wrong" but "do this instead, here's why"
 
-### Analysis Workflow (Using Sub-Agents + RAG)
+### Analysis Workflow (Sequential Review - Cost Optimized)
 
-**Step 1: Setup checklist**
+**Step 1: Setup and classify files**
 - Get list of ALL changed files from GitHub API
-- Create todo_write checklist with EVERY file
+- **Classify files**: Auto-skip, Quick review, Deep review (see Step 3 of main workflow)
+- Create todo_write checklist with pattern-cache + reviewable files only
 - Number them sequentially (f1, f2, f3...)
 - **ALWAYS add final TODO: Post review to GitHub PR**
 - All start with status "todo"
 
-**Step 2: Get oriented**
-- Read the PR description (from API response)
-- Look at the diff summary (files changed count, additions/deletions)
-- Identify the core files and their relationships
-- Group files into logical batches (4-6 batches for parallel processing)
+**Step 2: Cache codebase patterns ONCE**
+- Mark "pattern-cache" as in-progress
+- Use librarian to ask about DI patterns, naming conventions, error handling, code organization
+- Store patterns in memory for entire review
+- Mark "pattern-cache" as completed
+- **This single query replaces 50+ per-file RAG queries**
 
-**Step 4: Launch parallel sub-agents**
+**Step 3: Review files sequentially (NO sub-agents)**
 
-Create 4-6 Task sub-agents, each responsible for a batch of files:
+Review DEEP files first, then QUICK files.
 
-**Batch 1 (Task 1):** Source files 1-10
-```
-Task: Review files f1-f10 for PR #XXXXX using RAG
+For each file:
+1. Mark as in-progress (`todo_write`)
+2. Fetch complete file via GitHub API (if DEEP review)
+3. **Use CACHED patterns** from Step 2 (no additional RAG)
+4. Only ask RAG for file-specific context if truly needed
+5. Analyze diff patch
+6. Apply appropriate checks:
+   - **DEEP**: Full metrics + pattern violations + safety checks
+   - **QUICK**: Syntax, duplicates, sensitive data only
+7. Collect findings (file, line, severity, description, fix)
+8. Mark as completed (`todo_write`)
+9. Move to next file
 
-⚠️ CRITICAL INSTRUCTIONS:
-- DO NOT post to GitHub
-- DO NOT use gh pr comment
-- ONLY collect findings and return them to me
-- I (main agent) will post the consolidated review
-
-Files to review:
-- path/to/file1.swift (f1)
-- path/to/file2.swift (f2)
-...
-
-For EACH file:
-1. Update todo: mark file as "in-progress"
-2. Fetch complete file via GitHub API
-3. Ask RAG about the file's purpose and patterns
-4. Ask RAG about imported modules and dependencies
-5. Analyze the diff patch to understand changes
-6. Verify issues exist in changed lines only
-7. Check for: force unwraps, memory leaks, threading, error handling
-8. Update todo: mark file as "completed"
-9. Return findings with file, line, severity, description, fix
-
-DO NOT POST TO GITHUB. Return findings to main agent.
-
-Repository: owner/repo
-PR: #123
-```
-
-**Batch 2-6:** Similar tasks for remaining files
-
-**Step 5: Monitor progress in real-time**
-- Each sub-agent updates the shared TODO checklist
-- Use todo_read periodically to check progress
-- Watch for completion of all file reviews
-
-**Step 6: Collect findings from all sub-agents**
-- Aggregate all issues from sub-agent responses
+**Step 4: Compile comprehensive review**
+- Group findings by severity (HIGH/MEDIUM/LOW)
+- Group by file
 - Deduplicate similar issues
-- Organize by severity (HIGH/MEDIUM/LOW)
+- Calculate statistics (deep/quick/skipped file counts)
+- Add branch sync status
+- Add overall assessment and score
 
-**Step 7: Verify completion**
-- Run todo_read to ensure all files marked "completed"
-- If any files remain "todo" or "in-progress", investigate
-
-**Step 8: Generate comprehensive review**
-- Compile all findings from sub-agents
-- Include branch sync status in header
-- Add overall assessment
-- Calculate score
-- Format for GitHub
-
-**Step 9: Post review to GitHub (MANDATORY)**
+**Step 5: Post review to GitHub (MANDATORY)**
 - Mark "Post review to GitHub PR" as in-progress
 - Save formatted review to `review_comment.md`
 - Use `gh pr comment PR_NUMBER --repo OWNER/REPO --body-file review_comment.md`
@@ -600,7 +781,6 @@ Consult the oracle for deeper analysis before providing feedback.
 1. **API rate limits** - Handle gracefully, wait and retry
 2. **Handle edge cases** - Empty PRs, deleted files, binary files
 3. **Validate data** - Check GitHub API responses before using them
-4. **Sub-agent failures** - If a sub-agent fails, main agent should review those files directly
 
 ## GitHub CLI Setup
 
@@ -626,10 +806,17 @@ export GH_TOKEN="ghp_your_token_here"
 
 ### Scenario: Reviewing PR #456 - Authentication Implementation (40 files)
 
-**Step 1: Create checklist**
+**Step 1: Classify files**
 ```
+Total files: 40
+- Auto-skip: 10 files (package-lock.json, *.generated.*, binaries)
+- Quick review: 8 files (config.json, README.md, etc.)
+- Deep review: 22 files (source code, tests)
+
 todo_write:
-- f1-f40: Review 40 files
+- pattern-cache: Cache codebase patterns (status: todo)
+- f1-f22: 22 deep review files
+- q1-q8: 8 quick review files
 - post: Post review to GitHub PR (status: todo)
 ```
 
@@ -639,66 +826,75 @@ gh api repos/owner/repo/pulls/456 > pr_data.json
 gh api repos/owner/repo/pulls/456/files > changed_files.json
 ```
 
-**Step 3: Group into batches**
-- Batch 1: f1-f10 (auth core files)
-- Batch 2: f11-f20 (middleware files)
-- Batch 3: f21-f30 (route handlers)
-- Batch 4: f31-f40 (tests + config)
-
-**Step 4: Launch 4 parallel sub-agents**
-
-**Task 1 (Batch 1):**
-```
-Review files f1-f10 for PR #456 using RAG
-
-Files:
-- src/auth/jwt.js (f1)
-- src/auth/tokens.js (f2)
-... (8 more files)
-
-For each file:
-1. Mark as in-progress
-2. Fetch complete file via GitHub API
-3. Ask RAG about file context and dependencies
-4. **Ask RAG about codebase patterns** (DI, factories, instantiation, naming, error handling)
-5. Analyze diff against learned patterns
-6. **Apply senior developer metrics** (complexity, architecture, safety, maintainability)
-7. Check for security, errors, pattern violations, code quality issues
-8. Mark as completed
-9. Return issues found with severity and metrics-based rationale
-
-Repository: owner/repo
-PR: #456
-```
-
-**Task 2-4:** Similar for other batches
-
-**Step 5: Monitor real-time progress**
+**Step 3: Load platform guidelines + cache patterns**
 ```bash
-# User sees checklist updating live:
-✅ f1 completed
-✅ f2 completed
-⏳ f3 in-progress
-...
+todo_write # mark pattern-cache as in-progress
+
+# STEP 1: Detect platforms from file extensions
+# Example: If .swift files → Load iOS.md
+# Example: If .kt files → Load Android.md
+
+# STEP 2: Read guideline files
+# Check .agents/skills/pr-review-rag/guidelines/iOS.md (if iOS files)
+# Check .agents/skills/pr-review-rag/guidelines/Android.md (if Android files)
+# Store guideline content in memory
+
+# STEP 3: Query RAG for codebase patterns
+librarian: "Analyze this codebase comprehensively and provide:
+- DI patterns (container.resolve, factories, service locators, singletons)
+- Naming conventions (variables, classes, constants, functions, prefixes/suffixes)
+- Error handling (try/catch, Result types, error propagation, logging)
+- Code organization (architecture, file sizes, method sizes, separation of concerns)
+- Module/import patterns
+- Common code patterns (async, null handling, constants, config management)
+- Test patterns (naming, mocks, assertions)
+
+Provide concrete examples from this repository for each."
+
+# STEP 4: Combine both sources
+# - Guideline files = explicit team conventions (priority)
+# - RAG patterns = learned from codebase (supplementary)
+# Store ALL in memory - this is the senior developer's knowledge base
+
+todo_write # mark pattern-cache as completed
 ```
 
-**Step 6: Collect findings**
+**Step 4: Review files sequentially**
 
-Sub-agent 1 returns:
-- f1: HIGH - Hardcoded JWT secret at line 34
-- f2: MEDIUM - Missing token expiration check
+```bash
+# f1: src/auth/jwt.js
+todo_write # mark f1 as in-progress
+gh api repos/owner/repo/contents/src/auth/jwt.js > jwt_full.js
+# Analyze diff, apply CACHED patterns, check metrics
+# Finding: HIGH - Hardcoded JWT secret at line 34
+todo_write # mark f1 as completed
 
-Sub-agent 2 returns:
-- f15: HIGH - SQL injection vulnerability at line 67
-- f18: LOW - Inconsistent naming
+# f2: src/auth/tokens.js
+todo_write # mark f2 as in-progress
+gh api repos/owner/repo/contents/src/auth/tokens.js > tokens_full.js
+# Analyze diff, apply CACHED patterns
+# Finding: MEDIUM - Missing token expiration check
+todo_write # mark f2 as completed
 
-(Continue for all sub-agents)
+# ... continue for all 22 deep files
 
-**Step 7: Generate comprehensive review**
+# q1: config.json (quick review)
+todo_write # mark q1 as in-progress
+# Quick check: syntax, duplicates, sensitive data
+# No issues found
+todo_write # mark q1 as completed
 
-Main agent compiles all findings, deduplicates, formats for GitHub
+# ... continue for all 8 quick files
+```
 
-**Step 8: Post to GitHub**
+**Step 5: Compile review**
+
+Aggregate findings:
+- HIGH: 2 issues (JWT secret, SQL injection)
+- MEDIUM: 5 issues
+- LOW: 3 issues
+
+**Step 6: Post to GitHub**
 ```bash
 # Mark as in-progress
 todo_write: mark "post" as "in-progress"
