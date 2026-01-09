@@ -1,706 +1,912 @@
 # Common PR Review Guidelines
 
-Universal code review standards applied by both `pr-review` and `pr-review-rag` skills.
+Universal code review standards for all platforms (iOS, Android, Web, Backend).
 
 **Last Updated:** January 2026
 
 ---
 
-## Severity Levels
+## Agent Cheat Sheet
 
-Use these severity classifications when flagging issues:
+**SEVERITY LEVELS:**
+- `HIGH` → Security, crashes, data loss, architecture violations, breaking changes
+- `MEDIUM` → Maintainability, complexity, missing tests, conventions
+- `LOW` → Style, minor improvements, documentation
 
-### 🔴 HIGH Severity
+**TOP PRIORITIES (check first):**
+1. SECURITY: injection, auth bypass, secrets exposure, input validation
+2. ARCHITECTURE: DI violations, pattern violations, module boundaries
+3. DATA INTEGRITY: transactions, migrations, race conditions
+4. CORRECTNESS: business logic, idempotency, edge cases
 
-**Criteria:**
-- Security vulnerabilities (XSS, SQL injection, auth bypass, exposed secrets)
-- Architectural pattern violations (DI, factories, singletons, module boundaries)
-- Memory leaks, data loss, crash-inducing bugs
-- Breaking changes without migration path
-- Critical performance issues (unbounded loops, blocking main thread)
+**OUTPUT FORMAT:**
+```
+[SEVERITY] Category: Description
+File: path/to/file.ext#L10-L20
+Issue: What's wrong
+Fix: How to fix it
+```
 
-**Examples:**
-- Direct instantiation when codebase uses DI container
-- `common/` module importing from `Apps/` (breaks micro frontend architecture)
-- Using Emotion when codebase standard is Linaria
-- Hardcoded secrets, API keys, passwords
-- SQL injection vulnerability
-- Force unwrapping optionals that can crash
-
-**Impact:** Breaks architecture, security, or stability
+**LANGUAGE TAGS:**
+- `APPLIES_TO: all` → Universal rule
+- `APPLIES_TO: mobile` → iOS, Android
+- `APPLIES_TO: web` → React, Vue, JS/TS frontend
+- `APPLIES_TO: backend` → Node, Python, Go, Java, etc.
 
 ---
 
-### 🟡 MEDIUM Severity
+## Rule Schema
 
-**Criteria:**
+Each rule follows this structure:
+```
+ID: CATEGORY-NAME-NNN
+SEVERITY: HIGH | MEDIUM | LOW
+APPLIES_TO: all | mobile | web | backend | [specific]
+CONDITION: When this rule triggers
+DETECT: What to look for
+FIX: How to resolve
+```
+
+---
+
+## SECTION: Severity Definitions
+
+### HIGH Severity
+- Security vulnerabilities (XSS, injection, auth bypass, exposed secrets)
+- Architecture pattern violations (DI, factories, module boundaries)
+- Data loss, crashes, memory leaks
+- Breaking changes without migration
+- Race conditions, deadlocks
+- Missing transactions for multi-step operations
+
+### MEDIUM Severity
 - Convention violations (naming, imports, constants)
 - Code complexity (>3 nesting levels, >50 line methods)
 - Missing error handling or null checks
-- Performance concerns (N+1 queries, inefficient algorithms)
 - Missing tests for new functionality
+- Performance concerns (N+1, inefficient algorithms)
 - Accessibility issues
 
-**Examples:**
-- Inconsistent naming (`snake_case` vs `camelCase`)
-- Magic numbers instead of named constants
-- Missing try/catch or error propagation
-- Function with >4 parameters (should use config object)
-- Component >300 lines (should extract subcomponents)
-- Missing accessibility labels
-
-**Impact:** Affects maintainability, readability, or user experience
-
----
-
-### 🟢 LOW Severity
-
-**Criteria:**
+### LOW Severity
 - Code style preferences
 - Minor optimizations
-- Documentation suggestions
-- Comment improvements
+- Documentation improvements
 - Formatting inconsistencies
 
-**Examples:**
-- Variable could have more descriptive name
-- Method could be extracted for clarity
-- Missing inline comment for complex logic
-- Could use const instead of let
-
-**Impact:** Minor improvement, nice-to-have
-
 ---
 
-## Pattern Violations to Detect
+## SECTION: Architecture Rules
 
-### DI Container Violations (HIGH)
-
-**Across all languages:**
-
-❌ **iOS:**
-```swift
-let vc = MyViewController()  // WRONG
-let vm = MyViewModel()       // WRONG
+### ARCH-DI-001: Dependency Injection Violation
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Direct instantiation when codebase uses DI container/factory
+DETECT: new ClassName() or ClassName() for services, ViewModels, repositories
+FIX: Use container.resolve(), inject(), factory.create(), or @Inject
 ```
 
-✅ **Correct:**
-```swift
-let vc = container.resolve(MyViewController.self)
-let vm = container.resolve(MyViewModelProtocol.self, arguments: data)
+### ARCH-FACTORY-001: Factory Pattern Bypass
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Direct instantiation when factory exists
+DETECT: new Connection(), new Config() when Factory/Builder available
+FIX: Use ConnectionFactory.create(), ConfigBuilder().build()
 ```
 
-❌ **Java/Kotlin:**
-```kotlin
-val service = UserService()  // WRONG when DI used
+### ARCH-SINGLETON-001: Singleton Misuse
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Direct instantiation of singleton class
+DETECT: new DatabaseManager(), new Logger(), new ApiClient()
+FIX: Use .shared, .instance, .getInstance(), or DI
 ```
 
-✅ **Correct:**
-```kotlin
-@Inject lateinit var service: UserService
-// or
-val service = ServiceFactory.create()
+### ARCH-BOUNDARY-001: Module Boundary Violation
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Shared/common module imports from app-specific modules
+DETECT: common/ importing from apps/, shared/ importing from features/
+FIX: Reverse dependency direction; apps import from common
 ```
 
-❌ **TypeScript/JavaScript:**
-```typescript
-const service = new AuthService()  // WRONG when DI used
+### ARCH-LAYER-001: Layer Violation
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: Wrong layer contains logic (UI has business logic, etc.)
+DETECT: Business logic in View/Component, data fetching in UI layer
+FIX: Move to appropriate layer (ViewModel, Service, Repository)
 ```
 
-✅ **Correct:**
-```typescript
-const service = inject(AuthService)
-// or
-const service = useService(AuthService)
+### ARCH-CIRCULAR-001: Circular Dependency
 ```
-
-**Why HIGH:** Breaks dependency injection, reduces testability, violates architecture
-
----
-
-### Factory/Builder Pattern Violations (HIGH)
-
-❌ **Direct instantiation when factory exists:**
-```
-new Connection()          // WRONG
-new Config(a,b,c,d,e)    // WRONG
-```
-
-✅ **Use factory/builder:**
-```
-ConnectionFactory.create()
-ConfigBuilder().withA().withB().build()
-```
-
-**Why HIGH:** Violates established creation patterns, bypasses configuration logic
-
----
-
-### Singleton Pattern Violations (HIGH)
-
-❌ **Direct instantiation:**
-```swift
-let db = DatabaseManager()       // iOS - WRONG
-let logger = Logger()             // Java - WRONG
-let api = new ApiClient()         // JS - WRONG
-```
-
-✅ **Use singleton accessor:**
-```swift
-let db = DatabaseManager.shared  // iOS
-let logger = Logger.getInstance() // Java
-let api = ApiClient.instance      // JS
-```
-
-**Why HIGH:** Creates multiple instances of singleton, breaks global state management
-
----
-
-### Async Pattern Violations (HIGH)
-
-❌ **Using callbacks when codebase uses async/await:**
-```javascript
-fetchData((data) => {  // WRONG if codebase uses async/await
-  processData(data, (result) => {
-    // callback hell
-  })
-})
-```
-
-✅ **Use async/await:**
-```javascript
-const data = await fetchData()
-const result = await processData(data)
-```
-
-**Why HIGH:** Inconsistent with codebase patterns, harder to maintain
-
----
-
-### Module Boundary Violations (HIGH)
-
-**Web/React specific:**
-
-❌ **common/ importing from Apps/:**
-```javascript
-// In common/components/Button.jsx
-import something from 'Apps/housing.demand/...'  // WRONG!
-import data from '../../Apps/housing.supply/...' // WRONG!
-```
-
-✅ **Correct:**
-```javascript
-// Apps can import from common, not vice versa
-import Button from 'common/components/Button'  // ✅ In Apps/
-```
-
-**Why HIGH:** Breaks micro frontend architecture, creates circular dependencies
-
----
-
-### Styling Pattern Violations (HIGH for Web)
-
-**Web/React specific:**
-
-❌ **Using Emotion when Linaria is standard:**
-```javascript
-import styled from '@emotion/styled'  // WRONG!
-```
-
-✅ **Use Linaria:**
-```javascript
-import { styled } from '@linaria/react'
-import { css } from '@linaria/core'
-```
-
-**Why HIGH:** Inconsistent build pipeline, bundle size impact, mixing CSS-in-JS libraries
-
----
-
-## Senior Developer Metrics
-
-Apply these checks to ALL code files:
-
-### Code Quality
-
-**Complexity:**
-- Method >50 lines? → MEDIUM - Extract smaller methods
-- >3 levels of nesting? → MEDIUM - Use early returns or extract logic
-- File >500 lines? → MEDIUM - Split into multiple files
-- Class >400 lines? → MEDIUM - Too many responsibilities
-
-**Single Responsibility:**
-- Does the class/method do too many things?
-- Business logic mixed with presentation logic? → MEDIUM
-- UI code in ViewModels? → MEDIUM
-
-**Code Duplication:**
-- Is this logic duplicated elsewhere? → MEDIUM
-- Could this be extracted into a shared utility?
-
-**Naming:**
-- Do names follow codebase conventions? → MEDIUM if violated
-- Are they descriptive and consistent?
-- Boolean names: `isEnabled`, `hasData`, `canPerform`
-- Avoid abbreviations unless standard in codebase
-
-**Function Parameters:**
-- >4 parameters? → MEDIUM - Suggest config object/struct
-- Too many boolean flags? → MEDIUM - Use enum or options object
-
-**Example:**
-```typescript
-// ❌ MEDIUM - Too many parameters
-function createUser(name, email, age, country, phone, address, zip) { }
-
-// ✅ Better
-function createUser(userData: UserData) { }
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Modules depend on each other circularly
+DETECT: A imports B, B imports A (directly or transitively)
+FIX: Extract shared interface, use dependency inversion
 ```
 
 ---
 
-### Architecture
+## SECTION: Security Rules
 
-**Separation of Concerns:**
-- Business logic in ViewControllers/Components? → MEDIUM
-- Data fetching in UI components? → MEDIUM
-- Should be in ViewModel/Service layer
-
-**Dependency Direction:**
-- Does the change introduce circular dependencies? → HIGH
-- Does it violate layered architecture?
-
-**Interface Segregation:**
-- Are interfaces too broad? → MEDIUM
-- Do clients depend on methods they don't use?
-
-**Testability:**
-- Can this code be tested? → MEDIUM if not
-- Are dependencies injectable?
-- Hardcoded dependencies? → MEDIUM
-
----
-
-### Safety & Performance
-
-**Thread Safety:**
-- Async operations without synchronization? → HIGH
-- Shared state without locks/mutexes? → HIGH
-- Race conditions? → HIGH
-- Concurrent access to mutable data? → HIGH
-
-**Memory Management:**
-- Circular references (strong reference cycles)? → HIGH
-- Event listeners not cleaned up? → MEDIUM
-- Closure captures without `[weak self]`? → HIGH (iOS)
-- Resource disposal missing (files, connections)? → MEDIUM
-
-**Null/Undefined Handling:**
-- Force unwrapping (`!`) without guards? → HIGH
-- Unsafe optional access? → MEDIUM
-- Missing null checks? → MEDIUM
-
-**Error Handling:**
-- Try/catch missing for fallible operations? → MEDIUM
-- Errors swallowed silently? → MEDIUM
-- Error propagation incomplete? → MEDIUM
-
-**Performance:**
-- N+1 queries (database/API calls in loops)? → MEDIUM
-- Missing batch operations? → MEDIUM
-- Algorithmic complexity: O(n²) where O(n) possible? → MEDIUM
-- Memory allocations in hot paths? → MEDIUM
-- String concatenation in loops? → LOW
-
----
-
-### Maintainability
-
-**Magic Numbers/Strings:**
-- Hardcoded values without explanation? → MEDIUM
-- Should be named constants
-
-**Example:**
-```swift
-// ❌ MEDIUM - Magic number
-if userAge > 18 { }
-
-// ✅ Better
-private let MINIMUM_AGE = 18
-if userAge > MINIMUM_AGE { }
+### SEC-INJECT-001: SQL Injection
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: User input in SQL without parameterization
+DETECT: String concatenation in SQL queries, f-strings with user data
+FIX: Use parameterized queries, prepared statements, ORM
 ```
 
-**Configuration:**
-- Hardcoded URLs, API endpoints? → MEDIUM
-- Should be in config files or environment variables
+### SEC-INJECT-002: XSS Vulnerability
+```
+SEVERITY: HIGH
+APPLIES_TO: web
+CONDITION: Unsanitized user input rendered as HTML
+DETECT: dangerouslySetInnerHTML, innerHTML, v-html without sanitization
+FIX: Sanitize with DOMPurify, use text content, escape HTML
+```
 
-**Documentation:**
-- Complex logic (>20 lines) without comments? → LOW
-- Public APIs without documentation? → MEDIUM
+### SEC-INJECT-003: Command Injection
+```
+SEVERITY: HIGH
+APPLIES_TO: backend
+CONDITION: User input in shell commands
+DETECT: exec(), system(), spawn() with user data
+FIX: Use parameterized APIs, whitelist allowed values
+```
 
-**API Usage:**
-- Using deprecated APIs? → MEDIUM
-- Wrong lifecycle methods? → MEDIUM
+### SEC-AUTH-001: Missing Authorization
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Endpoint/action lacks permission check
+DETECT: No auth middleware, missing role check, no ownership validation
+FIX: Add authorization check before sensitive operations
+```
 
-**Dead/Unused Code:**
-- Unused imports/dependencies? → LOW (cleanup)
-- Unused variables/constants? → LOW
-- Unused function parameters? → LOW (remove or prefix with `_`)
-- Unused class properties/fields? → LOW
-- Unused types/interfaces/enums? → LOW
-- Unreachable code (after return/throw)? → MEDIUM (logic error or cleanup needed)
-- Dead branches (conditions that can never be true)? → MEDIUM (logic error)
-- Unused private methods/functions? → MEDIUM (cleanup or remove)
-- Empty functions/methods? → MEDIUM (implement or remove)
-- Empty catch blocks (swallowing errors)? → HIGH (error handling issue)
-- Unused lifecycle methods (empty componentDidMount, etc.)? → LOW
-- Unused event handlers? → LOW
-- Commented-out code blocks (>10 lines)? → LOW (remove or document why kept)
-- Debug/console logs in production code? → MEDIUM (should be removed)
-- Unused classes/components? → MEDIUM (remove to reduce maintenance burden)
-- Duplicate code that could be consolidated? → MEDIUM (extract to shared function)
-- Outdated TODOs/FIXMEs (>6 months old)? → LOW (resolve or remove)
+### SEC-AUTH-002: Authentication Bypass
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Auth can be circumvented
+DETECT: Hardcoded tokens, skipped validation, debug bypasses
+FIX: Ensure all auth paths validated, remove debug code
+```
 
-**Examples:**
-```typescript
-// ❌ MEDIUM - Unreachable code
-function process() {
-  return result
-  console.log("This never runs")  // Dead code
-}
+### SEC-SECRET-001: Hardcoded Secrets
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Credentials in source code
+DETECT: API keys, passwords, tokens in code (not env/config)
+FIX: Use environment variables, secrets manager
+```
 
-// ❌ MEDIUM - Dead branch
-if (userAge > 0) {
-  // logic
-} else if (userAge < 0) {  // Can never be true after first condition
-  // Dead branch
-}
+### SEC-SECRET-002: Secrets in Logs
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Sensitive data logged
+DETECT: Logging passwords, tokens, PII, credit cards
+FIX: Redact sensitive fields, use structured logging with filters
+```
 
-// ❌ LOW - Unused imports
-import { unused } from './utils'  // Not used anywhere
+### SEC-CRYPTO-001: Weak Cryptography
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Insecure algorithms for security purposes
+DETECT: MD5/SHA1 for passwords, hardcoded keys, Math.random() for tokens
+FIX: Use bcrypt/argon2 for passwords, secure random, key management
+```
 
-// ❌ LOW - Unused parameter
-function calculate(a, b, unused) {  // 'unused' not referenced
-  return a + b
-}
+### SEC-INPUT-001: Missing Input Validation
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: User input used without validation
+DETECT: No type/range/format checks, trusting client data
+FIX: Validate all inputs server-side, use schemas
+```
 
-// ✅ Better - Remove or prefix
-function calculate(a, b, _unused) {  // Convention: prefix with _
-  return a + b
-}
-
-// ❌ MEDIUM - Empty function
-function handleClick() {
-  // TODO: implement
-}
-
-// ❌ HIGH - Empty catch (swallows errors)
-try {
-  await riskyOperation()
-} catch (e) {
-  // Empty - errors lost!
-}
-
-// ✅ Better - Log or handle
-try {
-  await riskyOperation()
-} catch (e) {
-  logger.error('Operation failed', e)
-  throw e  // Re-throw or handle
-}
-
-// ❌ MEDIUM - Commented code without explanation
-// const oldLogic = () => {
-//   // 50 lines of old code
-// }
-
-// ✅ Better - Remove or add explanation
-// TODO: Old logic kept for reference until v2.0 migration complete (remove after March 2026)
-// const oldLogic = () => { ... }
-
-// ❌ MEDIUM - Duplicate code
-function calculateTaxA(amount) {
-  return amount * 0.18
-}
-function calculateTaxB(amount) {
-  return amount * 0.18  // Same logic - should consolidate
-}
-
-// ✅ Better - Extract common logic
-const TAX_RATE = 0.18
-function calculateTax(amount) {
-  return amount * TAX_RATE
-}
+### SEC-PATH-001: Path Traversal
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: User input in file paths
+DETECT: File operations with user-provided paths, ../
+FIX: Validate paths, use allowlists, sanitize input
 ```
 
 ---
 
-## File-Type Specific Checks
+## SECTION: Privacy & PII Rules
 
-### Source Code Files (.swift, .kt, .java, .ts, .jsx, .py, .go, .rb, .php)
-
-**Apply ALL pattern violations and senior developer metrics**
-
-**Additional checks:**
-- Imports follow codebase pattern? (e.g., import { factory } vs direct class)
-- Async patterns consistent with codebase?
-- Error handling follows codebase pattern (try/catch, Result, Either)?
-- Constants vs magic numbers?
-
----
-
-### UI Files (.xib, .storyboard, .xml)
-
-**Focus:**
-- Constraint conflicts → MEDIUM
-- Outlet connections valid → HIGH (can crash)
-- Accessibility labels present → MEDIUM
-- UI element identifiers present → LOW
-- Hardcoded sizes vs adaptive layouts → MEDIUM
-
----
-
-### View Files (.swift UIView, .jsx, .vue, .tsx Components)
-
-**Pattern checks:**
-- Component instantiation follows DI pattern
-- Styling follows codebase standard (Linaria vs Emotion)
-
-**Metrics:**
-- Component >300 lines? → MEDIUM - Extract subcomponents
-- >5 props/dependencies? → MEDIUM - Consider composition
-- Direct DOM manipulation in React/Vue? → MEDIUM - Use refs pattern
-
-**Safety:**
-- UI updates on main thread (iOS/Android)? → HIGH if not
-- Proper cleanup in deinit/componentWillUnmount? → MEDIUM
-- Memory leaks from event listeners? → HIGH
-
-**Accessibility:**
-- Labels, roles, semantic HTML present? → MEDIUM
-
-**State Management:**
-- Too many local states? → MEDIUM - Consider lifting up
-- Prop drilling >3 levels? → MEDIUM - Use Context/Redux
-
----
-
-### ViewModel/Presenter Files
-
-**Pattern checks:**
-- DI patterns followed
-- Factory usage correct
-
-**Metrics:**
-- Class >400 lines? → MEDIUM - Too many responsibilities
-- >10 public methods? → MEDIUM - Interface too broad
-- Business logic mixed with presentation? → MEDIUM
-
-**Logic:**
-- Business logic correctness
-- Error handling (try/catch, Result types) → MEDIUM if missing
-- Proper separation of concerns
-- Testability issues (hard dependencies, global state) → MEDIUM
-- Observable/binding patterns match codebase
-- Null/undefined handling
-- Side effects properly isolated? → MEDIUM if not
-
----
-
-### Model/Entity Files (.swift, .kt, .ts, .java)
-
-**Pattern checks:**
-- Naming conventions followed
-- Serialization patterns consistent
-
-**Metrics:**
-- Model >200 lines? → MEDIUM - Should it be split?
-- Mutable state that should be immutable? → MEDIUM
-- Missing validation logic? → MEDIUM
-
-**Data:**
-- Codable/Serializable/JSON annotations correct
-- Field types match API contract
-- Data validation (ranges, formats, required fields) → MEDIUM if missing
-- Migration impacts (schema changes)? → HIGH if breaking
-- Default values appropriate
-
----
-
-### Test Files (*test*, *spec*, *Test.java, *Tests.swift, *_test.go)
-
-**Coverage:**
-- Are there tests for new functionality? → MEDIUM if missing
-- Edge cases covered? → MEDIUM if not
-- Error scenarios tested? → MEDIUM if not
-- Integration tests for cross-module changes? → MEDIUM if not
-
-**Quality:**
-- Test naming follows conventions
-- Mock/stub patterns match codebase
-- Assertions clear and specific
-- Test organization (Arrange-Act-Assert, Given-When-Then)
-- Tests actually test something meaningful? → MEDIUM if trivial
-
----
-
-### Config Files (.env, .json, .yaml, .xml, .properties)
-
-**Security:**
-- Exposed secrets, API keys, passwords? → HIGH
-- Sensitive data in version control? → HIGH
-
-**Validation:**
-- Syntax errors (JSON/YAML validation) → HIGH (breaks build)
-- Duplicate keys → MEDIUM
-- Missing required fields → MEDIUM
-
-**Sensitive configs:**
-- Database credentials → HIGH if exposed
-- API endpoints correct (not pointing to prod from dev)? → HIGH
-
----
-
-### Documentation Files (.md, .txt, .rst)
-
-**Quick checks only:**
-- Broken links → LOW
-- Outdated information that contradicts code? → MEDIUM
-- Typos in user-facing docs → LOW
-
----
-
-## Security Checklist (HIGH Priority)
-
-**Always check for:**
-
-1. **Injection Vulnerabilities:**
-   - SQL injection (unparameterized queries)
-   - XSS (unsanitized user input in HTML)
-   - Command injection (shell commands with user input)
-   - LDAP injection
-   - XML injection
-
-2. **Authentication/Authorization:**
-   - Authentication bypass attempts
-   - Missing authorization checks
-   - Weak password validation
-   - Session management issues
-   - JWT token validation missing
-
-3. **Secrets Exposure:**
-   - Hardcoded passwords, API keys, tokens
-   - Credentials in logs
-   - Secrets in error messages
-   - Exposed in client-side code
-
-4. **Cryptography:**
-   - Weak algorithms (MD5, SHA1 for passwords)
-   - Hardcoded encryption keys
-   - Missing HTTPS/TLS
-   - Insecure random number generation
-
-5. **Input Validation:**
-   - Missing input validation
-   - Trusting user input without sanitization
-   - File upload without type/size validation
-   - Path traversal vulnerabilities
-
----
-
-## Performance Checklist
-
-**Check for:**
-
-1. **Database:**
-   - N+1 query problems (loop calling DB)
-   - Missing indexes on query fields
-   - SELECT * instead of specific columns
-   - Missing query limits (unbounded results)
-
-2. **Algorithms:**
-   - O(n²) where O(n) or O(log n) possible
-   - Unnecessary nested loops
-   - Redundant computations
-
-3. **Memory:**
-   - Large objects created repeatedly
-   - String concatenation in loops (use StringBuilder)
-   - Unbounded cache growth
-   - Memory leaks (circular refs, unclosed resources)
-
-4. **Network:**
-   - Missing caching headers
-   - Loading too much data (pagination missing)
-   - Synchronous blocking calls on UI thread
-   - Missing request batching
-
----
-
-## Test Coverage Expectations
-
-**Minimum requirements:**
-
-- **New functionality:** Must have tests → MEDIUM if missing
-- **Bug fixes:** Regression test required → MEDIUM if missing
-- **Edge cases:** Should be tested → MEDIUM if not
-- **Error paths:** Should be tested → MEDIUM if not
-
-**Test quality:**
-- Tests should be deterministic (not flaky)
-- Tests should be fast (<1s per test)
-- Tests should be isolated (no shared state)
-- Mocks used appropriately (not over-mocking)
-
----
-
-## Web-Specific (SSR/CSR)
-
-**Server-Side Rendering:**
-- Core data must be SSR → HIGH if only CSR for SEO-critical data
-- Code is isomorphic (runs on both server/client)
-- No `window` or `document` access without checks → HIGH (crashes SSR)
-
-**Example:**
-```javascript
-// ❌ HIGH - Crashes on server
-const width = window.innerWidth
-
-// ✅ Correct
-const [width, setWidth] = useState(0)
-useEffect(() => {
-  if (typeof window !== 'undefined') {
-    setWidth(window.innerWidth)
-  }
-}, [])
+### PRIV-DATA-001: Unnecessary PII Collection
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Collecting more PII than needed
+DETECT: New fields storing email, phone, location without justification
+FIX: Minimize data collection, justify each PII field
 ```
 
-**XSS Prevention:**
-- Sanitize user input before rendering → HIGH
-- Use DOMPurify or similar for `dangerouslySetInnerHTML`
+### PRIV-LOG-001: PII in Logs
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Personal data in logs/telemetry
+DETECT: Logging user emails, phones, IPs, financial data
+FIX: Exclude PII from logs, hash/anonymize if needed
+```
+
+### PRIV-GDPR-001: Data Retention Issue
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: No deletion mechanism for user data
+DETECT: Missing "right to be forgotten" implementation
+FIX: Implement data deletion, respect retention policies
+```
+
+---
+
+## SECTION: Data Integrity Rules
+
+### DATA-TX-001: Missing Transaction
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Multi-step DB operations without transaction
+DETECT: Multiple writes that must be atomic, no rollback on failure
+FIX: Wrap in transaction, use unit of work pattern
+```
+
+### DATA-IDEM-001: Non-Idempotent Operation
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Retryable operation causes duplicate effects
+DETECT: Payment/email/notification without idempotency key
+FIX: Add idempotency key, check-before-act pattern
+```
+
+### DATA-FK-001: Missing Constraint
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: Relationship without database constraint
+DETECT: Foreign key not enforced, orphan records possible
+FIX: Add FK constraint, add cascade/restrict policy
+```
+
+### DATA-MIGRATE-001: Unsafe Migration
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Migration causes downtime or data loss
+DETECT: Long-running locks, non-reversible changes, no backfill
+FIX: Use expand-contract pattern, add rollback, test on prod-like data
+```
+
+---
+
+## SECTION: Concurrency Rules
+
+### CONC-RACE-001: Race Condition
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Shared mutable state without synchronization
+DETECT: Multiple threads/coroutines writing same variable
+FIX: Use locks, atomic operations, or immutable data
+```
+
+### CONC-DEAD-001: Deadlock Risk
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Potential for circular wait
+DETECT: Nested locks, inconsistent lock ordering
+FIX: Establish lock ordering, use timeout, avoid nested locks
+```
+
+### CONC-BLOCK-001: Blocking Main Thread
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: I/O or heavy computation on UI/main thread
+DETECT: Network/DB calls on main thread, sync I/O in event loop
+FIX: Move to background thread/queue, use async
+```
+
+### CONC-ASYNC-001: Unhandled Async Error
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Async errors not caught or propagated
+DETECT: Fire-and-forget promises, missing await, unhandled rejection
+FIX: Await all promises, add error handling, use try-catch
+```
+
+---
+
+## SECTION: Error Handling Rules
+
+### ERR-SWALLOW-001: Swallowed Error
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Exception caught but not handled
+DETECT: Empty catch block, catch without logging or re-throw
+FIX: Log error, re-throw if appropriate, or handle properly
+```
+
+### ERR-PROPAGATE-001: Lost Error Context
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: Error re-thrown without original context
+DETECT: throw new Error("failed") losing original stack/message
+FIX: Wrap error with cause, preserve stack trace
+```
+
+### ERR-TIMEOUT-001: Missing Timeout
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: External call without timeout
+DETECT: HTTP/DB/API calls with no timeout configured
+FIX: Add timeout, handle timeout error
+```
+
+### ERR-RETRY-001: Unbounded Retry
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Retry loop without limit
+DETECT: while(true) retry, no max attempts, no backoff
+FIX: Add max retries, exponential backoff, circuit breaker
+```
+
+---
+
+## SECTION: Performance Rules
+
+### PERF-N1-001: N+1 Query
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: Database query in loop
+DETECT: for item in items: query(item.id)
+FIX: Use batch query, eager loading, join
+```
+
+### PERF-ALGO-001: Inefficient Algorithm
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: O(n²) or worse when O(n) or O(log n) possible
+DETECT: Nested loops, repeated linear searches
+FIX: Use appropriate data structure (map, set), optimize algorithm
+```
+
+### PERF-MEM-001: Memory Leak
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Resources not released, references held
+DETECT: Event listeners not removed, closures capturing self, unclosed streams
+FIX: Cleanup in destructor/unmount, use weak references
+```
+
+### PERF-ALLOC-001: Excessive Allocation
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: Object creation in hot path
+DETECT: new Object() in loop, string concatenation in loop
+FIX: Reuse objects, use StringBuilder, pool resources
+```
+
+### PERF-CACHE-001: Missing Cache
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: Expensive operation repeated unnecessarily
+DETECT: Same computation/query executed multiple times
+FIX: Cache result, memoize, use computed property
+```
+
+---
+
+## SECTION: Code Quality Rules
+
+### QUAL-COMPLEX-001: High Complexity
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: Method too complex
+DETECT: >50 lines, >3 nesting levels, cyclomatic complexity >10
+FIX: Extract methods, use early returns, simplify conditionals
+```
+
+### QUAL-PARAM-001: Too Many Parameters
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: Function has >4 parameters
+DETECT: function(a, b, c, d, e, f)
+FIX: Use options object, builder pattern, or split function
+```
+
+### QUAL-SIZE-001: File Too Large
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: File exceeds reasonable size
+DETECT: >500 lines for most files, >300 lines for components
+FIX: Split into multiple files/modules
+```
+
+### QUAL-DUP-001: Code Duplication
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: Same logic repeated
+DETECT: Copy-pasted code blocks, similar functions
+FIX: Extract to shared function/utility
+```
+
+### QUAL-MAGIC-001: Magic Values
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: Unexplained literal values
+DETECT: if (status === 3), timeout: 86400000
+FIX: Use named constants with descriptive names
+```
+
+### QUAL-NAMING-001: Poor Naming
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: Names don't convey meaning
+DETECT: x, temp, data, doStuff, inconsistent conventions
+FIX: Use descriptive names following codebase conventions
+```
+
+---
+
+## SECTION: Type Safety Rules
+
+### TYPE-ANY-001: Unsafe Type Bypass
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: Type system circumvented
+DETECT: as any, @ts-ignore, unsafeCast, raw types
+FIX: Use proper types, narrow with type guards
+```
+
+### TYPE-NULL-001: Unsafe Null Access
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Nullable value accessed without check
+DETECT: Force unwrap (!), !! operator, no null check
+FIX: Add null check, use optional chaining, provide default
+```
+
+### TYPE-CAST-001: Unsafe Cast
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: Type cast without validation
+DETECT: as Type without instanceof check, unchecked generic casts
+FIX: Validate before casting, use type guards
+```
+
+---
+
+## SECTION: Testing Rules
+
+### TEST-MISSING-001: Missing Tests
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: New functionality without tests
+DETECT: New feature/fix with no corresponding test file changes
+FIX: Add unit tests covering new code paths
+```
+
+### TEST-EDGE-001: Missing Edge Cases
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: Only happy path tested
+DETECT: No tests for null, empty, error, boundary conditions
+FIX: Add tests for edge cases and error paths
+```
+
+### TEST-FLAKY-001: Flaky Test Risk
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: Test depends on external factors
+DETECT: Real time, random values, external services, shared state
+FIX: Mock externals, use deterministic values, isolate tests
+```
+
+### TEST-BRITTLE-001: Brittle Test
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: Test coupled to implementation
+DETECT: Testing private methods, exact string matches, order-dependent
+FIX: Test behavior not implementation, use flexible assertions
+```
+
+---
+
+## SECTION: Observability Rules
+
+### OBS-LOG-001: Missing Logging
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: Important operation not logged
+DETECT: No logs for errors, key business operations, state changes
+FIX: Add structured logging with context (IDs, parameters)
+```
+
+### OBS-LOG-002: Excessive Logging
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: Noisy logs in hot paths
+DETECT: Debug logs in loops, logging every request at ERROR level
+FIX: Use appropriate log levels, sample high-frequency logs
+```
+
+### OBS-METRIC-001: Missing Metrics
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: Key operations not instrumented
+DETECT: No success/failure counts, no latency tracking
+FIX: Add metrics for SLI-relevant operations
+```
+
+---
+
+## SECTION: API & Contract Rules
+
+### API-BREAK-001: Breaking Change
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Public API changed incompatibly
+DETECT: Removed field, renamed property, changed type, removed endpoint
+FIX: Version the change, deprecate first, provide migration path
+```
+
+### API-SCHEMA-001: Schema Mismatch
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Client/server types don't match
+DETECT: Different field names, types, or required fields
+FIX: Sync types, use shared schema (OpenAPI, Protobuf, GraphQL)
+```
+
+### API-DEPRECATE-001: Missing Deprecation
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: API removed without deprecation period
+DETECT: Deleted public method/endpoint, removed field
+FIX: Mark deprecated first, document timeline, then remove
+```
+
+---
+
+## SECTION: Dependency Rules
+
+### DEP-NEW-001: Unjustified Dependency
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: New library adds unnecessary weight
+DETECT: Large dependency for small feature, duplicate functionality
+FIX: Use existing libs, implement simply, or justify need
+```
+
+### DEP-VULN-001: Vulnerable Dependency
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Known CVE in dependency
+DETECT: Outdated package with security advisory
+FIX: Update to patched version, or mitigate if no patch
+```
+
+### DEP-LICENSE-001: License Issue
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Dependency license incompatible
+DETECT: GPL in proprietary project, unlicensed code
+FIX: Use compatible license, find alternative
+```
+
+---
+
+## SECTION: Environment Rules
+
+### ENV-PROD-001: Dev Code in Production
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Debug/test code enabled in prod
+DETECT: Hardcoded debug flags, test endpoints, verbose logging
+FIX: Use environment variables, remove debug code
+```
+
+### ENV-CONFIG-001: Hardcoded Config
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: Environment-specific values in code
+DETECT: Hardcoded URLs, API keys, feature flags
+FIX: Use config files, environment variables
+```
+
+### ENV-FLAG-001: Unsafe Feature Flag
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: Feature flag defaults to enabled
+DETECT: New feature on by default without testing
+FIX: Default to off, enable gradually, add kill switch
+```
+
+---
+
+## SECTION: Build Rules
+
+### BUILD-LINT-001: Suppressed Warning
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: Lint/type error suppressed without justification
+DETECT: @ts-ignore, eslint-disable, @SuppressWarnings without comment
+FIX: Fix the underlying issue, or document why suppression needed
+```
+
+### BUILD-CI-001: Broken CI
+```
+SEVERITY: HIGH
+APPLIES_TO: all
+CONDITION: Changes break CI pipeline
+DETECT: Failing tests, lint errors, type errors
+FIX: Fix issues before merge
+```
+
+---
+
+## SECTION: Documentation Rules
+
+### DOC-API-001: Undocumented Public API
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: Public interface lacks documentation
+DETECT: Public method/class/endpoint without docs
+FIX: Add documentation describing purpose, parameters, return
+```
+
+### DOC-CHANGE-001: Missing Changelog
+```
+SEVERITY: MEDIUM
+APPLIES_TO: all
+CONDITION: User-facing change without changelog
+DETECT: New feature/breaking change, no CHANGELOG update
+FIX: Document change in CHANGELOG/release notes
+```
 
 ---
 
 ## Quick Reference Checklist
 
-When reviewing ANY file, check:
+When reviewing ANY file, verify:
 
-1. ✅ Pattern violations (DI, factories, singletons, async, styling, module boundaries)
-2. ✅ Severity correctly assigned (HIGH/MEDIUM/LOW)
-3. ✅ Code metrics (complexity, nesting, file/method sizes, parameters)
-4. ✅ Security issues (injection, auth, secrets, crypto, input validation)
-5. ✅ Performance concerns (N+1, complexity, memory, network)
-6. ✅ Test coverage (new functionality, edge cases, errors)
-7. ✅ Architecture violations (separation of concerns, dependency direction)
-8. ✅ Safety issues (threading, memory leaks, null handling, error handling)
-9. ✅ Maintainability (magic numbers, hardcoded values, documentation)
+1. **SECURITY** → injection, auth, secrets, crypto, input validation
+2. **ARCHITECTURE** → DI, factories, singletons, module boundaries, layers
+3. **DATA** → transactions, idempotency, migrations, constraints
+4. **CONCURRENCY** → race conditions, deadlocks, blocking, async errors
+5. **ERRORS** → not swallowed, timeout present, bounded retries
+6. **PERFORMANCE** → N+1, algorithms, memory, caching
+7. **QUALITY** → complexity, parameters, file size, duplication, naming
+8. **TYPES** → no unsafe casts, null checks, proper typing
+9. **TESTS** → coverage, edge cases, not flaky, not brittle
+10. **OBSERVABILITY** → logging, metrics, no PII in logs
+11. **API** → backward compatible, schema synced, deprecation path
+12. **DEPENDENCIES** → justified, no vulnerabilities, license OK
+13. **ENVIRONMENT** → no dev in prod, config externalized, flags safe
+14. **BUILD** → no suppressions, CI passes
+15. **DOCS** → API documented, changelog updated
 
 ---
 
-**Notes for Reviewers:**
+## Appendix A: Language-Specific Examples
 
-- Apply platform-specific guidelines (iOS.md, Web.md, Android.md) in addition to these common checks
-- Platform guidelines take precedence when conflicts arise
-- Use cached patterns from codebase analysis to supplement these guidelines
-- Always provide actionable feedback with suggested fixes
-- Reference specific guideline sections in review comments
+### A.1 DI Container Patterns
+
+**Swift (iOS):**
+```swift
+// BAD
+let vc = MyViewController()
+let vm = MyViewModel()
+
+// GOOD
+let vc = container.resolve(MyViewController.self)
+let vm = container.resolve(MyViewModelProtocol.self, arguments: data)
+```
+
+**Kotlin (Android):**
+```kotlin
+// BAD
+val service = UserService()
+
+// GOOD
+@Inject lateinit var service: UserService
+val service = ServiceFactory.create()
+```
+
+**TypeScript (Web/Backend):**
+```typescript
+// BAD
+const service = new AuthService()
+
+// GOOD
+const service = inject(AuthService)
+const service = useService(AuthService)
+```
+
+**Python (Backend):**
+```python
+# BAD
+service = UserService()
+
+# GOOD
+service = container.resolve(UserService)
+service = inject(UserService)
+```
+
+### A.2 Transaction Patterns
+
+**Any language:**
+```
+// BAD - partial failure risk
+deductFromAccount(from, amount)
+addToAccount(to, amount)  // If this fails, money is lost
+
+// GOOD - atomic operation
+transaction {
+  deductFromAccount(from, amount)
+  addToAccount(to, amount)
+}
+```
+
+### A.3 Idempotency Patterns
+
+**Any language:**
+```
+// BAD - double charge risk
+function processPayment(orderId, amount) {
+  chargeCard(amount)
+  markOrderPaid(orderId)
+}
+
+// GOOD - idempotent
+function processPayment(orderId, amount) {
+  if (isOrderPaid(orderId)) return  // Already processed
+  chargeCard(amount, idempotencyKey: orderId)
+  markOrderPaid(orderId)
+}
+```
+
+### A.4 Async Error Handling
+
+**JavaScript/TypeScript:**
+```typescript
+// BAD - unhandled rejection
+fetchData().then(process)
+
+// GOOD
+try {
+  const data = await fetchData()
+  await process(data)
+} catch (error) {
+  logger.error('Failed', { error })
+  throw error
+}
+```
+
+**Swift:**
+```swift
+// BAD
+Task { await riskyOperation() }  // Error lost
+
+// GOOD
+Task {
+  do {
+    try await riskyOperation()
+  } catch {
+    logger.error("Failed: \(error)")
+  }
+}
+```
+
+### A.5 Null Safety
+
+**Swift:**
+```swift
+// BAD
+let name = user.name!  // Crash if nil
+
+// GOOD
+guard let name = user.name else { return }
+let name = user.name ?? "Unknown"
+```
+
+**Kotlin:**
+```kotlin
+// BAD
+val name = user.name!!  // Crash if null
+
+// GOOD
+val name = user.name ?: return
+val name = user.name ?: "Unknown"
+```
+
+**TypeScript:**
+```typescript
+// BAD
+const name = user.name!  // Assertion, may be wrong
+
+// GOOD
+const name = user.name ?? 'Unknown'
+if (!user.name) return
+```
+
+---
+
+## Appendix B: Platform-Specific Overrides
+
+For platform-specific rules, load additional guidelines:
+- **iOS/Swift:** `.agents/guidelines/iOS.md`
+- **Android/Kotlin:** `.agents/guidelines/Android.md`
+- **Web/React:** `.agents/guidelines/Web.md`
+- **Backend/Node:** `.agents/guidelines/Backend.md`
+
+Platform guidelines override Common rules when conflicts arise.
+
+---
+
+## Notes for AI Reviewers
+
+1. **Cite rule IDs** in comments (e.g., "SEC-INJECT-001: SQL injection risk")
+2. **Apply ALL common rules** regardless of platform
+3. **Load platform-specific guidelines** based on file extensions
+4. **Prioritize HIGH severity** findings over MEDIUM/LOW
+5. **Provide actionable fixes**, not just problem descriptions
+6. **Be concise** - one issue per comment, clear fix suggestion
