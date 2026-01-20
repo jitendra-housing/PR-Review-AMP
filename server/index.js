@@ -169,11 +169,12 @@ app.get('/health', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
 
-app.listen(PORT, () => {
+app.listen(PORT, HOST, () => {
   console.log(`\n🚀 Amp PR Review Webhook Server`);
-  console.log(`📡 Listening on port ${PORT}`);
+  console.log(`📡 Listening on ${HOST}:${PORT}`);
   console.log(`🔍 Reviewer username: ${process.env.AMP_GITHUB_USERNAME}`);
-  console.log(`\n💡 Webhook URL: http://localhost:${PORT}/webhook`);
-  console.log(`🏥 Health check: http://localhost:${PORT}/health\n`);
+  console.log(`\n💡 Webhook URL: http://<your-ip>:${PORT}/webhook`);
+  console.log(`🏥 Health check: http://<your-ip>:${PORT}/health\n`);
 });
