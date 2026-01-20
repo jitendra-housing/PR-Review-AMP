@@ -69,8 +69,8 @@ if [ -z "$GITHUB_TOKEN" ]; then
     MISSING_VARS+=("GITHUB_TOKEN")
 fi
 
-if [ -z "$AMP_GITHUB_USERNAME" ]; then
-    MISSING_VARS+=("AMP_GITHUB_USERNAME")
+if [ -z "$GITHUB_USERNAME" ]; then
+    MISSING_VARS+=("GITHUB_USERNAME")
 fi
 
 if [ ${#MISSING_VARS[@]} -ne 0 ]; then
@@ -99,7 +99,7 @@ mkdir -p "$SCRIPT_DIR/.temp"
 # Display configuration
 echo "✅ Configuration validated"
 echo "📋 Settings:"
-echo "   - Reviewer: $AMP_GITHUB_USERNAME"
+echo "   - Reviewer: $GITHUB_USERNAME"
 echo "   - Port: ${PORT:-3000}"
 echo "   - Skill: $([ "$USE_RAG" = "false" ] && echo "pr-review (local clone)" || echo "pr-review-rag (RAG, faster)")"
 echo "   - Model: ${MODEL:-sonnet}"

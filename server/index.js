@@ -139,7 +139,7 @@ app.post('/webhook', async (req, res) => {
     return res.status(200).send('Action ignored');
   }
   
-  const ampReviewerUsername = process.env.AMP_GITHUB_USERNAME;
+  const ampReviewerUsername = process.env.GITHUB_USERNAME;
   
   if (requested_reviewer?.login !== ampReviewerUsername) {
     console.log(`[WEBHOOK] Reviewer ${requested_reviewer?.login} !== ${ampReviewerUsername}`);
@@ -174,7 +174,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 app.listen(PORT, HOST, () => {
   console.log(`\n🚀 Amp PR Review Webhook Server`);
   console.log(`📡 Listening on ${HOST}:${PORT}`);
-  console.log(`🔍 Reviewer username: ${process.env.AMP_GITHUB_USERNAME}`);
+  console.log(`🔍 Reviewer username: ${process.env.GITHUB_USERNAME}`);
   console.log(`\n💡 Webhook URL: http://<your-ip>:${PORT}/webhook`);
   console.log(`🏥 Health check: http://<your-ip>:${PORT}/health\n`);
 });
