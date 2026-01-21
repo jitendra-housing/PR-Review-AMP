@@ -812,6 +812,25 @@ echo "💰 [COST] ========================================"
 rm -f /tmp/pr_review_grep_calls.txt /tmp/pr_review_finder_calls.txt
 ```
 
+**Step 10: Notify server review is complete (MANDATORY - for queue management)**
+
+This step is CRITICAL for queue-based reviews. Without it, the next PR in queue will never be processed.
+
+```bash
+echo "📞 SERVER: Notifying review complete..."
+
+# MANDATORY: Call localhost webhook to signal completion
+# This allows the server to process the next PR in queue
+curl -s -X POST http://localhost:3000/review-complete \
+  -H "Content-Type: application/json" \
+  -d "{\"pr_url\":\"${PR_URL}\",\"pr_number\":${PR_NUMBER},\"status\":\"complete\"}" \
+  || echo "⚠️ Failed to notify server - queue may be blocked"
+
+echo "✅ SERVER: Review complete notification sent"
+```
+
+**IMPORTANT:** This step must ALWAYS execute after posting the review to GitHub. Do not skip or fail silently.
+
 ### Use the Oracle Tool
 
 For complex reviews involving:

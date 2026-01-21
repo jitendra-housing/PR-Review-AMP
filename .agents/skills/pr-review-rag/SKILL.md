@@ -637,6 +637,8 @@ echo "💰 [COST] - Quick: ${QUICK_COUNT} files"
 echo "💰 [COST] - Skipped: ${SKIPPED_COUNT} files"
 echo "💰 [COST] ========================================"
 rm -f /tmp/pr_review_tokens_in.txt /tmp/pr_review_tokens_out.txt /tmp/librarian_calls.txt
+
+echo "✅ REVIEW COMPLETE"
 ```
 
 ## Best Practices

@@ -7,6 +7,23 @@ const app = express();
 
 app.use(express.json());
 
+// Middleware: Allow /review-complete only from localhost
+function localhostOnly(req, res, next) {
+  const ip = req.ip || req.connection.remoteAddress;
+  const isLocalhost = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+  
+  if (!isLocalhost) {
+    console.log(`[SECURITY] Blocked /review-complete from ${ip}`);
+    return res.status(403).send('Forbidden');
+  }
+  
+  next();
+}
+
+// Queue for PR reviews (only used with pr-review skill)
+const reviewQueue = [];
+let isReviewing = false;
+
 function verifyGitHubSignature(payload, signature, secret) {
   if (!signature || !secret) return false;
   
@@ -110,7 +127,7 @@ async function triggerAmpReview(prUrl) {
       process.stderr.write(data);
     });
     
-    console.log('✓ Review process started\n');
+    console.log('✓ Review process started (queue managed by /review-complete callback)\n');
     return { success: true, message: 'Review started' };
   }
 }
@@ -149,19 +166,85 @@ app.post('/webhook', async (req, res) => {
   const prUrl = pull_request.html_url;
   console.log(`[WEBHOOK] ✓ Valid request for PR: ${prUrl}`);
   
-  triggerAmpReview(prUrl)
-    .then(result => {
-      console.log('[WEBHOOK] ✓ Review triggered successfully');
-    })
-    .catch(error => {
-      console.error('[WEBHOOK] ✗ Failed to trigger review:', error.message);
-    });
+  const useRag = process.env.USE_RAG !== 'false';
+  
+  if (useRag) {
+    // pr-review-rag: No queue needed (supports parallel reviews)
+    triggerAmpReview(prUrl)
+      .then(result => {
+        console.log('[WEBHOOK] ✓ Review triggered successfully');
+      })
+      .catch(error => {
+        console.error('[WEBHOOK] ✗ Failed to trigger review:', error.message);
+      });
+  } else {
+    // pr-review: Use queue (one at a time)
+    reviewQueue.push(prUrl);
+    console.log(`[QUEUE] Added to queue. Position: ${reviewQueue.length}`);
+    
+    // Start processing queue
+    processQueue();
+  }
   
   res.status(200).json({
     success: true,
-    message: 'Review triggered',
+    message: useRag ? 'Review triggered' : 'PR added to review queue',
+    queue_position: useRag ? null : reviewQueue.length,
     pr_url: prUrl
   });
+});
+
+// Queue processor for pr-review skill
+async function processQueue() {
+  if (isReviewing || reviewQueue.length === 0) {
+    return;
+  }
+  
+  isReviewing = true;
+  const prUrl = reviewQueue.shift();
+  
+  console.log(`\n[QUEUE] ====================================`);
+  console.log(`[QUEUE] Processing: ${prUrl}`);
+  console.log(`[QUEUE] Remaining in queue: ${reviewQueue.length}`);
+  console.log(`[QUEUE] ====================================\n`);
+  
+  try {
+    await triggerAmpReview(prUrl);
+    console.log(`[QUEUE] ✓ Completed: ${prUrl}`);
+  } catch (error) {
+    console.error(`[QUEUE] ✗ Failed: ${prUrl}`, error.message);
+  } finally {
+    isReviewing = false;
+    
+    // Process next in queue after 5 second delay
+    if (reviewQueue.length > 0) {
+      console.log(`[QUEUE] Starting next review in 5 seconds...`);
+      setTimeout(() => processQueue(), 5000);
+    } else {
+      console.log(`[QUEUE] Queue empty, waiting for new PRs`);
+    }
+  }
+}
+
+// Review complete callback (localhost only)
+app.post('/review-complete', localhostOnly, (req, res) => {
+  const { pr_url, pr_number, status } = req.body;
+  
+  console.log(`\n[CALLBACK] Review complete notification`);
+  console.log(`[CALLBACK] PR: ${pr_url || pr_number}`);
+  console.log(`[CALLBACK] Status: ${status}`);
+  
+  isReviewing = false;
+  
+  // Process next in queue
+  if (reviewQueue.length > 0) {
+    console.log(`[CALLBACK] Starting next review in 5 seconds...`);
+    setTimeout(() => processQueue(), 5000);
+  } else {
+    console.log(`[CALLBACK] Queue empty`);
+  }
+  
+  res.json({ success: true, message: 'Acknowledged' });
 });
 
 app.get('/health', (req, res) => {
