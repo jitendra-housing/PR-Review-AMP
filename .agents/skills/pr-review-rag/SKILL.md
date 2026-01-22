@@ -42,10 +42,6 @@ Extract from URL (e.g., `https://github.com/owner/repo/pull/123`):
 
 ```bash
 echo "🔍 SERVER: Fetching PR data"
-echo "💰 [COST] Initializing cost tracking"
-echo "0" > /tmp/pr_review_tokens_in.txt
-echo "0" > /tmp/pr_review_tokens_out.txt
-echo "0" > /tmp/librarian_calls.txt
 ```
 
 ### 2. Fetch PR Data via GitHub API
@@ -119,19 +115,10 @@ Use `todo_write` to create checklist items:
 ⏭️ Skipped files (auto-generated, lock files, binaries): 15 files
 ```
 
-**Log file classification:**
-```bash
-echo "💰 [COST] File classification complete:"
-echo "💰 [COST] - Auto-skipped: ${SKIPPED_COUNT} files"
-echo "💰 [COST] - Quick review: ${QUICK_COUNT} files"
-echo "💰 [COST] - Deep review: ${DEEP_COUNT} files"
-```
-
 ### 4. Cache Codebase Patterns Using RAG (One-Time Cost)
 
 ```bash
 echo "🔎 SERVER: Learning codebase patterns"
-echo "💰 [COST] === STEP 4: PATTERN CACHE START ==="
 ```
 
 **CRITICAL: Learn all patterns ONCE at the start to avoid repeated RAG queries**
@@ -162,37 +149,22 @@ Based on file extensions in the PR, load relevant platform-specific guidelines:
 GUIDELINES_DIR=".agents/guidelines"
 
 # ALWAYS load Common.md (universal review standards)
-GUIDELINE_SIZE=$(wc -w "$GUIDELINES_DIR/Common.md" | awk '{print $1}')
-GUIDELINE_TOKENS=$((GUIDELINE_SIZE * 4 / 3))
-echo "💰 [COST] Loading Common.md - Est tokens: ~${GUIDELINE_TOKENS}"
-cat "$GUIDELINES_DIR/Common.md"  # Universal review standards
+cat "$GUIDELINES_DIR/Common.md"
 
 # For iOS files:
 if [ -f "$GUIDELINES_DIR/iOS.md" ]; then
-    GUIDELINE_SIZE=$(wc -w "$GUIDELINES_DIR/iOS.md" | awk '{print $1}')
-    GUIDELINE_TOKENS=$((GUIDELINE_SIZE * 4 / 3))
-    echo "💰 [COST] Loading iOS.md - Est tokens: ~${GUIDELINE_TOKENS}"
-    cat "$GUIDELINES_DIR/iOS.md"  # Read and cache iOS-specific conventions
+    cat "$GUIDELINES_DIR/iOS.md"
 fi
 
 # For Android files:
 if [ -f "$GUIDELINES_DIR/Android.md" ]; then
-    GUIDELINE_SIZE=$(wc -w "$GUIDELINES_DIR/Android.md" | awk '{print $1}')
-    GUIDELINE_TOKENS=$((GUIDELINE_SIZE * 4 / 3))
-    echo "💰 [COST] Loading Android.md - Est tokens: ~${GUIDELINE_TOKENS}"
     cat "$GUIDELINES_DIR/Android.md"
 fi
 
 # For Web/React files:
 if [ -f "$GUIDELINES_DIR/Web.md" ]; then
-    GUIDELINE_SIZE=$(wc -w "$GUIDELINES_DIR/Web.md" | awk '{print $1}')
-    GUIDELINE_TOKENS=$((GUIDELINE_SIZE * 4 / 3))
-    echo "💰 [COST] Loading Web.md - Est tokens: ~${GUIDELINE_TOKENS}"
     cat "$GUIDELINES_DIR/Web.md"
 fi
-
-# Store loaded guidelines in memory for use throughout review
-echo "💰 [COST] Guidelines loaded in context"
 ```
 
 **Platform detection mapping:**
@@ -204,13 +176,6 @@ echo "💰 [COST] Guidelines loaded in context"
 - **Go:** `.go` → Load `Go.md`
 
 **Step 4b: Ask RAG these questions ONCE and cache results:**
-
-```bash
-echo "💰 [COST] Calling librarian for pattern analysis..."
-LIBRARIAN_CALLS=$(cat /tmp/librarian_calls.txt)
-echo "$((LIBRARIAN_CALLS + 1))" > /tmp/librarian_calls.txt
-echo "💰 [COST] Librarian call #$((LIBRARIAN_CALLS + 1)) - Pattern cache"
-```
 
 ```
 Use librarian to ask: "Analyze this codebase and provide comprehensive patterns that a senior developer would check:
@@ -274,8 +239,6 @@ Provide concrete code examples from this repository for each pattern."
 **Store the comprehensive response in memory for use throughout the review.**
 
 ```bash
-echo "💰 [COST] Pattern cache complete - response stored in memory"
-echo "💰 [COST] === STEP 4: PATTERN CACHE DONE ==="
 todo_write # mark "pattern-cache" as "completed"
 ```
 
@@ -296,7 +259,6 @@ You now have TWO sources of pattern knowledge:
 
 ```bash
 echo "🔎 SERVER: Reviewing files sequentially"
-echo "💰 [COST] === STEP 5: FILE REVIEWS START ==="
 ```
 
 **DO NOT SKIP ANY FILES (except auto-skipped categories).**
@@ -309,7 +271,6 @@ echo "💰 [COST] === STEP 5: FILE REVIEWS START ==="
 
 a. **Mark each file as in-progress** before reviewing:
    ```bash
-   echo "💰 [COST] File ${FILE_INDEX}/${TOTAL_FILES}: ${FILE_PATH} (${REVIEW_TYPE})"
    todo_write # update file status to "in-progress"
    ```
 
@@ -320,12 +281,6 @@ b. **CRITICAL: Get complete file content first:**
    ```
    
    **IMPORTANT**: You MUST read the full file to verify what exists. NEVER make claims about missing code without seeing the complete file.
-   
-   ```bash
-   FILE_SIZE=$(wc -w <<< "$FILE_CONTENT" | awk '{print $1}')
-   FILE_TOKENS=$((FILE_SIZE * 4 / 3))
-   echo "💰 [COST] File content loaded - Est tokens: ~${FILE_TOKENS}"
-   ```
 
 c. **Use cached patterns and limited RAG queries:**
    
@@ -351,13 +306,6 @@ c. **Use cached patterns and limited RAG queries:**
    - **Test patterns:** naming, mocks, assertions
    
    **Only ask RAG for file-specific context (if needed for DEEP review):**
-   ```bash
-   # ONLY call librarian if truly needed for complex file
-   echo "💰 [COST] WARNING: Additional librarian call for ${FILE_PATH}"
-   LIBRARIAN_CALLS=$(cat /tmp/librarian_calls.txt)
-   echo "$((LIBRARIAN_CALLS + 1))" > /tmp/librarian_calls.txt
-   echo "💰 [COST] Librarian call #$((LIBRARIAN_CALLS + 1)) - File context for ${FILE_PATH}"
-   ```
    - "What is the purpose of [FILE_PATH]?"
    - "What files import/depend on [FILE_PATH]?"
    - "Show me other files with similar responsibility"
@@ -457,21 +405,12 @@ h. **Collect findings for this file:**
    
 i. **Mark file as completed**:
    ```bash
-   echo "💰 [COST] File ${FILE_INDEX}/${TOTAL_FILES} complete"
    todo_write # mark file as "completed"
    ```
 
 j. **Move to next file** and repeat until all files reviewed
 
-```bash
-echo "💰 [COST] === STEP 5: FILE REVIEWS COMPLETE ==="
-```
-
 ### 6. Compile Comprehensive Review
-
-```bash
-echo "💰 [COST] === STEP 6: COMPILING REVIEW ==="
-```
 
 **After reviewing all files, organize findings:**
 - Group issues by severity (HIGH/MEDIUM/LOW)
@@ -591,7 +530,6 @@ connection = ConnectionFactory.create()
 
 ```bash
 echo "📤 SERVER: Posting review to GitHub"
-echo "💰 [COST] === STEP 7: POSTING REVIEW ==="
 ```
 
 **Step 9: Save formatted review**
@@ -612,33 +550,8 @@ Check exit code and confirm posting.
 
 ```bash
 echo "✅ SERVER: Review complete"
-```
-
-**Step 12: Clean up and display cost summary**
-```bash
 rm -f review_comment.md pr_data.json changed_files.json
 todo_write: mark "post" as "completed"
-
-echo ""
-echo "💰 [COST] ========================================"
-echo "💰 [COST] REVIEW COMPLETE - COST SUMMARY"
-echo "💰 [COST] ========================================"
-LIBRARIAN_CALLS=$(cat /tmp/librarian_calls.txt)
-echo "💰 [COST] Total librarian calls: ${LIBRARIAN_CALLS}"
-echo "💰 [COST] Expected: 1 (pattern cache only)"
-if [ "$LIBRARIAN_CALLS" -gt 1 ]; then
-  echo "💰 [COST] ⚠️  WARNING: Extra librarian calls detected!"
-  echo "💰 [COST] This significantly increased costs"
-fi
-echo "💰 [COST] ========================================"
-echo "💰 [COST] Files reviewed:"
-echo "💰 [COST] - Deep: ${DEEP_COUNT} files"
-echo "💰 [COST] - Quick: ${QUICK_COUNT} files"
-echo "💰 [COST] - Skipped: ${SKIPPED_COUNT} files"
-echo "💰 [COST] ========================================"
-rm -f /tmp/pr_review_tokens_in.txt /tmp/pr_review_tokens_out.txt /tmp/librarian_calls.txt
-
-echo "✅ REVIEW COMPLETE"
 ```
 
 ## Best Practices
