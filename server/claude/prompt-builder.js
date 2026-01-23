@@ -26,7 +26,18 @@ function buildFilePrompt(file, depth) {
     prompt += `- Review business logic correctness\n`;
     prompt += `- Check error handling and edge cases\n`;
     prompt += `- Assess performance implications\n`;
-    prompt += `- Verify test coverage needs\n\n`;
+    prompt += `- Verify test coverage needs\n`;
+    prompt += `- Consider impact on dependent files ONLY IF there are breaking changes\n`;
+    prompt += `- Suggest test updates ONLY IF behavior changed\n\n`;
+
+    // Add extended thinking guidance if enabled
+    if (process.env.ENABLE_EXTENDED_THINKING === 'true') {
+      prompt += `**Deep Analysis:** Take time to reason through complex implications. `;
+      prompt += `Think deeply about potential issues, architectural impacts, and edge cases before finalizing your review.\n\n`;
+    }
+
+    prompt += `**Critical:** Be conservative and honest. Only raise issues you can clearly identify. `;
+    prompt += `Don't make assumptions or raise hypothetical concerns. If the related files shown are compatible with the changes, don't mention them.\n\n`;
   } else {
     prompt += `## Instructions\n\n`;
     prompt += `Quick review focusing on:\n`;
@@ -46,7 +57,33 @@ function buildFilePrompt(file, depth) {
   prompt += `## Changes in This PR\n\n`;
   prompt += `\`\`\`diff\n${file.patch}\n\`\`\`\n\n`;
 
-  // Include semantic context if available
+  // Include dependency context if available (DEPENDENCY_AWARE strategy)
+  if (file.dependencies && file.dependencies.relatedFiles && file.dependencies.relatedFiles.length > 0) {
+    prompt += `## Related Files (Dependency Analysis)\n\n`;
+    prompt += `**Context Only**: The following files are related through verified imports/exports. Use this for understanding impact, but ONLY raise issues if you find actual problems, not hypothetical ones.\n\n`;
+
+    file.dependencies.relatedFiles.forEach((related, idx) => {
+      const relationshipLabel = related.relationship === 'dependent' ? 'Imports this file' :
+                                related.relationship === 'test' ? 'Tests this file' :
+                                'Related';
+
+      prompt += `### ${idx + 1}. \`${related.filename}\` (${relationshipLabel})\n\n`;
+
+      if (related.excerpt) {
+        prompt += `\`\`\`${getLanguageFromFilename(related.filename)}\n`;
+        prompt += related.excerpt;
+        prompt += `\n\`\`\`\n\n`;
+      }
+    });
+
+    prompt += `**Important Guidelines:**\n`;
+    prompt += `- ONLY mention dependent files if this change actually breaks their code or requires their update\n`;
+    prompt += `- ONLY suggest test updates if the behavior being tested has actually changed\n`;
+    prompt += `- Don't raise hypothetical concerns - be specific about actual issues\n`;
+    prompt += `- If the change is compatible, don't mention the related files at all\n\n`;
+  }
+
+  // Include semantic context if available (legacy support)
   if (file.semanticContext && file.semanticContext.relatedCode && file.semanticContext.relatedCode.length > 0) {
     prompt += `## Related Context (Semantic Search)\n\n`;
     prompt += `The following code snippets were found to be related to this file:\n\n`;
