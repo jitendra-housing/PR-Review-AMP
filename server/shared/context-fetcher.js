@@ -1,16 +1,14 @@
 const GitHubClient = require('./github-client');
-const SemanticSearch = require('../claude/semantic-search');
 
 /**
  * Context fetching strategies:
  * - DIFF_ONLY: Only patch/diff (current, fast but limited)
  * - FULL_FILES: Fetch complete file content from GitHub
- * - SEMANTIC_SEARCH: Use MCP semantic search for RAG-style retrieval
+ * Note: SEMANTIC_SEARCH removed (Zilliz) - will be replaced by CocoIndex
  */
 const STRATEGIES = {
   DIFF_ONLY: 'DIFF_ONLY',
-  FULL_FILES: 'FULL_FILES',
-  SEMANTIC_SEARCH: 'SEMANTIC_SEARCH'
+  FULL_FILES: 'FULL_FILES'
 };
 
 /**
@@ -22,10 +20,19 @@ class ContextFetcher {
    * @param {GitHubClient} githubClient - Optional shared GitHub client (avoids duplicate auth)
    */
   constructor(githubClient = null) {
-    this.strategy = process.env.CONTEXT_STRATEGY || STRATEGIES.SEMANTIC_SEARCH;
+    // Default to FULL_FILES if SEMANTIC_SEARCH requested (no longer available)
+    const requestedStrategy = process.env.CONTEXT_STRATEGY || STRATEGIES.FULL_FILES;
+    this.strategy = requestedStrategy === 'SEMANTIC_SEARCH'
+      ? STRATEGIES.FULL_FILES
+      : requestedStrategy;
+
+    if (requestedStrategy === 'SEMANTIC_SEARCH') {
+      console.warn('[CONTEXT] SEMANTIC_SEARCH not available (Zilliz removed). Using FULL_FILES.');
+    }
+
     this.fallbackStrategy = process.env.FALLBACK_STRATEGY || STRATEGIES.FULL_FILES;
     this.githubClient = githubClient || new GitHubClient();
-    this.semanticSearch = null;
+
     // Max file size to fetch (100KB default - larger files get truncated)
     this.maxFileSize = parseInt(process.env.MAX_FILE_SIZE || '102400');
     // Max chars to include in prompt (50K chars ~ 12.5K tokens)
@@ -41,19 +48,11 @@ class ContextFetcher {
   }
 
   /**
-   * Initialize context fetcher (connects to MCP if needed)
+   * Initialize context fetcher (no-op since semantic search removed)
    * @returns {Promise<void>}
    */
   async initialize() {
-    if (this.strategy === STRATEGIES.SEMANTIC_SEARCH) {
-      this.semanticSearch = new SemanticSearch();
-      const connected = await this.semanticSearch.initialize();
-
-      if (!connected) {
-        console.warn(`[CONTEXT] Semantic search unavailable, falling back to ${this.fallbackStrategy}`);
-        this.strategy = this.fallbackStrategy;
-      }
-    }
+    // No initialization needed - semantic search removed
   }
 
   /**
@@ -67,9 +66,6 @@ class ContextFetcher {
 
     try {
       switch (this.strategy) {
-        case STRATEGIES.SEMANTIC_SEARCH:
-          return await this.fetchSemanticContext(files, prInfo);
-
         case STRATEGIES.FULL_FILES:
           return await this.fetchFullFilesContext(files, prInfo);
 
@@ -177,44 +173,6 @@ class ContextFetcher {
     return enrichedFiles;
   }
 
-  /**
-   * SEMANTIC_SEARCH strategy: Use MCP for RAG-style code retrieval
-   * Best quality, finds related code automatically
-   * @param {Array} files - File objects
-   * @param {Object} prInfo - PR info
-   * @returns {Promise<Array>} Files with semantic context
-   */
-  async fetchSemanticContext(files, prInfo) {
-    if (!this.semanticSearch) {
-      throw new Error('Semantic search not initialized');
-    }
-
-    console.log(`[CONTEXT] Using SEMANTIC_SEARCH - fetching context for ${files.length} files`);
-
-    // Repository path for semantic search
-    const repoPath = `${prInfo.owner}/${prInfo.repo}`;
-
-    // Get semantic context for all files
-    const contexts = await this.semanticSearch.getFilesContext(files, repoPath);
-
-    // Also fetch full file content for better context
-    const fullFilesContext = await this.fetchFullFilesContext(files, prInfo);
-
-    // Merge semantic context with full files
-    const enrichedFiles = fullFilesContext.map((file, idx) => ({
-      ...file,
-      contextStrategy: 'SEMANTIC_SEARCH',
-      semanticContext: contexts[idx] || { file: file.filename, relatedCode: [] }
-    }));
-
-    const totalSnippets = enrichedFiles.reduce(
-      (sum, f) => sum + (f.semanticContext?.relatedCode?.length || 0),
-      0
-    );
-
-    console.log(`[CONTEXT] ✓ Enriched ${files.length} files with ${totalSnippets} semantic snippets`);
-    return enrichedFiles;
-  }
 
   /**
    * Get current strategy name
@@ -262,12 +220,10 @@ class ContextFetcher {
   }
 
   /**
-   * Disconnect and cleanup
+   * Disconnect and cleanup (no-op since semantic search removed)
    */
   async disconnect() {
-    if (this.semanticSearch) {
-      await this.semanticSearch.disconnect();
-    }
+    // No cleanup needed - semantic search removed
   }
 }
 

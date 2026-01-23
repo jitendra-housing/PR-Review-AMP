@@ -2,7 +2,8 @@
 
 /**
  * Test script for Context Fetcher
- * Tests different context strategies (DIFF_ONLY, FULL_FILES, SEMANTIC_SEARCH)
+ * Tests different context strategies (DIFF_ONLY, FULL_FILES)
+ * Note: SEMANTIC_SEARCH removed (Zilliz) - will be replaced by CocoIndex
  */
 
 require('dotenv').config();
@@ -76,8 +77,7 @@ async function testContextFetcher() {
   // Test each strategy
   const strategies = [
     STRATEGIES.DIFF_ONLY,
-    STRATEGIES.FULL_FILES,
-    STRATEGIES.SEMANTIC_SEARCH
+    STRATEGIES.FULL_FILES
   ];
 
   for (const strategy of strategies) {
@@ -137,10 +137,6 @@ async function testContextFetcher() {
       if (strategy === STRATEGIES.FULL_FILES) {
         console.error(`  - GitHub token is not configured`);
         console.error(`  - Test repository doesn't exist`);
-      } else if (strategy === STRATEGIES.SEMANTIC_SEARCH) {
-        console.error(`  - MCP server is not running`);
-        console.error(`  - MCP server is not linked`);
-        console.error(`  - Repository is not indexed`);
       }
 
       console.log();
@@ -167,12 +163,9 @@ async function testContextFetcher() {
   console.log('  FULL_FILES:');
   console.log('    - Good balance');
   console.log('    - Full file context');
-  console.log('    - Use for: Most reviews');
+  console.log('    - Use for: Most reviews (recommended)');
   console.log();
-  console.log('  SEMANTIC_SEARCH:');
-  console.log('    - Best quality');
-  console.log('    - Full context + related code');
-  console.log('    - Use for: Complex architectural reviews');
+  console.log('Note: SEMANTIC_SEARCH strategy removed (Zilliz) - will be replaced by CocoIndex');
   console.log('='.repeat(60));
 }
 
