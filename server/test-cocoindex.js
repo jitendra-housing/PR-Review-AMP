@@ -29,7 +29,7 @@ async function runTests() {
 
   // Override environment for testing
   process.env.ENABLE_SEMANTIC_SEARCH = 'true';
-  process.env.COCOINDEX_SERVICE_URL = 'http://localhost:5000';
+  process.env.COCOINDEX_SERVICE_URL = 'http://localhost:5001';
 
   const search = new SemanticSearch();
   let passCount = 0;
