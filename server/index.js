@@ -1,263 +1,120 @@
 require('dotenv').config();
 const express = require('express');
-const crypto = require('crypto');
-const { spawn } = require('child_process');
+const QueueManager = require('./shared/queue-manager');
+const { verifyGitHubSignature } = require('./shared/webhook-validator');
+const handleAmpReview = require('./amp-handler');
+const handleClaudeReview = require('./claude-handler');
 
 const app = express();
 
 app.use(express.json({ limit: '10mb' }));
 
+// Initialize queue manager
+const queueManager = new QueueManager();
+
+// Register handlers
+queueManager.registerHandler('amp', handleAmpReview);
+queueManager.registerHandler('claude', handleClaudeReview);
+
+// Get current agent from environment
+const currentAgent = (process.env.AGENT || 'amp').toLowerCase();
+console.log(`[SERVER] Agent mode: ${currentAgent}`);
+
 // Middleware: Allow /review-complete only from localhost
 function localhostOnly(req, res, next) {
   const ip = req.ip || req.connection.remoteAddress;
   const isLocalhost = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
-  
+
   if (!isLocalhost) {
     console.log(`[SECURITY] Blocked /review-complete from ${ip}`);
     return res.status(403).send('Forbidden');
   }
-  
+
   next();
-}
-
-// Queue for PR reviews (only used with pr-review skill)
-const reviewQueue = [];
-let isReviewing = false;
-
-function verifyGitHubSignature(payload, signature, secret) {
-  if (!signature || !secret) return false;
-  
-  const hmac = crypto.createHmac('sha256', secret);
-  const digest = 'sha256=' + hmac.update(payload).digest('hex');
-  
-  try {
-    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(digest));
-  } catch (e) {
-    return false;
-  }
-}
-
-async function triggerAmpReview(prUrl) {
-  const { execSync } = require('child_process');
-  const path = require('path');
-  
-  console.log(`\n[AMP] Starting PR review using pr-review skill`);
-  console.log(`[AMP] PR URL: ${prUrl}`);
-  
-  if (!process.env.GITHUB_TOKEN) {
-    const error = 'GITHUB_TOKEN not set in environment';
-    console.error('[ERROR]', error);
-    throw new Error(error);
-  }
-  
-  console.log('[AMP] Checking GitHub CLI authentication...');
-  
-  try {
-    execSync('gh auth status 2>&1', {
-      encoding: 'utf8',
-      stdio: 'pipe'
-    });
-    console.log('[GH AUTH] ✓ Already authenticated');
-  } catch (error) {
-    console.log('[GH AUTH] Not authenticated, logging in...');
-    
-    try {
-      const cleanEnv = { ...process.env };
-      delete cleanEnv.GITHUB_TOKEN;
-      delete cleanEnv.GH_TOKEN;
-      
-      execSync(`echo "${process.env.GITHUB_TOKEN}" | gh auth login --with-token 2>&1`, {
-        encoding: 'utf8',
-        env: cleanEnv,
-        stdio: 'pipe'
-      });
-      console.log('[GH AUTH] ✓ Login successful');
-    } catch (loginError) {
-      const sanitizedError = loginError.message.replace(process.env.GITHUB_TOKEN, '[REDACTED]');
-      console.error('[GH AUTH] ✗ Login failed');
-      console.error('Error:', sanitizedError.split('\n')[0]);
-      throw new Error('GitHub CLI authentication failed');
-    }
-  }
-  
-  const projectRoot = path.resolve(__dirname, '..');
-  const isTestMode = process.env.TEST_MODE === 'true';
-  const useRag = process.env.USE_RAG !== 'false';
-  const skill = useRag ? 'pr-review-rag' : 'pr-review';
-  const model = (process.env.MODEL || 'sonnet').toLowerCase();
-  const modeFlag = model === 'sonnet' ? 'large' : 'smart';
-  const reviewCommand = `use ${skill} skill to review PR ${prUrl}`;
-  
-  console.log('[AMP] Working directory:', projectRoot);
-  console.log(`[AMP] Mode: ${isTestMode ? 'TEST (interactive)' : 'PRODUCTION (background)'}`);
-  console.log(`[AMP] Skill: ${skill} (USE_RAG=${useRag})`);
-  console.log(`[AMP] Model: ${model} (--mode ${modeFlag})`);
-  console.log('[AMP] -----------------------------------\n');
-  
-  if (isTestMode) {
-    console.log('[TEST MODE] Opening Amp session...');
-    console.log(`[TEST MODE] Command: ${reviewCommand}`);
-    console.log('[TEST MODE] You can interact with Amp directly in this terminal\n');
-    
-    const amp = spawn('bash', ['-c', `printf "${reviewCommand}\\n" | amp --mode ${modeFlag}`], {
-      cwd: projectRoot,
-      env: {
-        ...process.env,
-        GH_TOKEN: process.env.GITHUB_TOKEN
-      },
-      stdio: 'inherit'
-    });
-    
-    return { success: true, message: 'Interactive session started' };
-  } else {
-    const amp = spawn('bash', ['-c', `printf "${reviewCommand}\\n" | amp --mode ${modeFlag}`], {
-      cwd: projectRoot,
-      env: {
-        ...process.env,
-        GH_TOKEN: process.env.GITHUB_TOKEN
-      },
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-    
-    amp.stdout.on('data', (data) => {
-      process.stdout.write(data);
-    });
-    
-    amp.stderr.on('data', (data) => {
-      process.stderr.write(data);
-    });
-    
-    console.log('✓ Review process started (queue managed by /review-complete callback)\n');
-    return { success: true, message: 'Review started' };
-  }
 }
 
 app.post('/webhook', async (req, res) => {
   const signature = req.headers['x-hub-signature-256'];
   const event = req.headers['x-github-event'];
   const payload = JSON.stringify(req.body);
-  
+
   console.log(`\n[WEBHOOK] Received: ${event}`);
-  
+
   if (!verifyGitHubSignature(payload, signature, process.env.GITHUB_WEBHOOK_SECRET)) {
     console.log('[WEBHOOK] Invalid signature');
     return res.status(401).send('Invalid signature');
   }
-  
+
   if (event !== 'pull_request') {
     console.log('[WEBHOOK] Ignoring non-PR event');
     return res.status(200).send('Event ignored');
   }
-  
+
   const { action, pull_request, requested_reviewer } = req.body;
-  
+
   if (action !== 'review_requested') {
     console.log(`[WEBHOOK] Ignoring action: ${action}`);
     return res.status(200).send('Action ignored');
   }
-  
-  const ampReviewerUsername = process.env.GITHUB_USERNAME;
-  
-  if (requested_reviewer?.login !== ampReviewerUsername) {
-    console.log(`[WEBHOOK] Reviewer ${requested_reviewer?.login} !== ${ampReviewerUsername}`);
-    return res.status(200).send('Not for Amp reviewer');
+
+  const reviewerUsername = process.env.GITHUB_USERNAME;
+
+  if (requested_reviewer?.login !== reviewerUsername) {
+    console.log(`[WEBHOOK] Reviewer ${requested_reviewer?.login} !== ${reviewerUsername}`);
+    return res.status(200).send('Not for configured reviewer');
   }
-  
+
   const prUrl = pull_request.html_url;
   console.log(`[WEBHOOK] ✓ Valid request for PR: ${prUrl}`);
-  
-  const useRag = process.env.USE_RAG !== 'false';
-  
-  if (useRag) {
-    // pr-review-rag: No queue needed (supports parallel reviews)
-    triggerAmpReview(prUrl)
-      .then(result => {
-        console.log('[WEBHOOK] ✓ Review triggered successfully');
-      })
-      .catch(error => {
-        console.error('[WEBHOOK] ✗ Failed to trigger review:', error.message);
-      });
-  } else {
-    // pr-review: Use queue (one at a time)
-    reviewQueue.push(prUrl);
-    console.log(`[QUEUE] Added to queue. Position: ${reviewQueue.length}`);
-    
-    // Start processing queue
-    processQueue();
-  }
-  
+  console.log(`[WEBHOOK] Using agent: ${currentAgent}`);
+
+  // Add to queue (queue manager handles parallel/sequential mode)
+  const queuePosition = queueManager.enqueue(currentAgent, prUrl);
+
   res.status(200).json({
     success: true,
-    message: useRag ? 'Review triggered' : 'PR added to review queue',
-    queue_position: useRag ? null : reviewQueue.length,
+    message: queuePosition ? 'PR added to review queue' : 'Review triggered',
+    agent: currentAgent,
+    queue_position: queuePosition,
     pr_url: prUrl
   });
 });
 
-// Queue processor for pr-review skill
-async function processQueue() {
-  if (isReviewing || reviewQueue.length === 0) {
-    return;
-  }
-  
-  isReviewing = true;
-  const prUrl = reviewQueue.shift();
-  
-  console.log(`\n[QUEUE] ====================================`);
-  console.log(`[QUEUE] Processing: ${prUrl}`);
-  console.log(`[QUEUE] Remaining in queue: ${reviewQueue.length}`);
-  console.log(`[QUEUE] ====================================\n`);
-  
-  try {
-    await triggerAmpReview(prUrl);
-    console.log(`[QUEUE] ✓ Completed: ${prUrl}`);
-  } catch (error) {
-    console.error(`[QUEUE] ✗ Failed: ${prUrl}`, error.message);
-  } finally {
-    isReviewing = false;
-    
-    // Process next in queue after 5 second delay
-    if (reviewQueue.length > 0) {
-      console.log(`[QUEUE] Starting next review in 5 seconds...`);
-      setTimeout(() => processQueue(), 5000);
-    } else {
-      console.log(`[QUEUE] Queue empty, waiting for new PRs`);
-    }
-  }
-}
-
 // Review complete callback (localhost only)
 app.post('/review-complete', localhostOnly, (req, res) => {
-  const { pr_url, pr_number, status } = req.body;
-  
-  console.log(`\n[CALLBACK] Review complete notification`);
-  console.log(`[CALLBACK] PR: ${pr_url || pr_number}`);
-  console.log(`[CALLBACK] Status: ${status}`);
-  
-  isReviewing = false;
-  
-  // Process next in queue
-  if (reviewQueue.length > 0) {
-    console.log(`[CALLBACK] Starting next review in 5 seconds...`);
-    setTimeout(() => processQueue(), 5000);
-  } else {
-    console.log(`[CALLBACK] Queue empty`);
-  }
-  
+  const { agent, pr_url, pr_number, status } = req.body;
+  const reviewAgent = agent || currentAgent;
+
+  queueManager.onReviewComplete(reviewAgent, pr_url, status);
+
   res.json({ success: true, message: 'Acknowledged' });
 });
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    agent: currentAgent,
+    model: process.env.MODEL || 'sonnet',
+    use_queue: process.env.USE_QUEUE !== 'false',
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get('/queue-status', (req, res) => {
+  res.json(queueManager.getStatus());
 });
 
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
 app.listen(PORT, HOST, () => {
-  console.log(`\n🚀 Amp PR Review Webhook Server`);
+  console.log(`\n🚀 PR Review Webhook Server`);
   console.log(`📡 Listening on ${HOST}:${PORT}`);
+  console.log(`🤖 Agent: ${currentAgent}`);
+  console.log(`🎯 Model: ${process.env.MODEL || 'sonnet'}`);
+  console.log(`📋 Queue: ${process.env.USE_QUEUE !== 'false' ? 'enabled' : 'disabled'}`);
   console.log(`🔍 Reviewer username: ${process.env.GITHUB_USERNAME}`);
   console.log(`\n💡 Webhook URL: http://<your-ip>:${PORT}/webhook`);
-  console.log(`🏥 Health check: http://<your-ip>:${PORT}/health\n`);
+  console.log(`🏥 Health check: http://<your-ip>:${PORT}/health`);
+  console.log(`📊 Queue status: http://<your-ip>:${PORT}/queue-status\n`);
 });
