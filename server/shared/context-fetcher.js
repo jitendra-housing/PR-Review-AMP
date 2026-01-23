@@ -1,14 +1,16 @@
 const GitHubClient = require('./github-client');
+const SemanticSearch = require('../claude/semantic-search');
 
 /**
  * Context fetching strategies:
- * - DIFF_ONLY: Only patch/diff (current, fast but limited)
+ * - DIFF_ONLY: Only patch/diff (fast but limited)
  * - FULL_FILES: Fetch complete file content from GitHub
- * Note: SEMANTIC_SEARCH removed (Zilliz) - will be replaced by CocoIndex
+ * - SEMANTIC_SEARCH: Intelligent code context using CocoIndex
  */
 const STRATEGIES = {
   DIFF_ONLY: 'DIFF_ONLY',
-  FULL_FILES: 'FULL_FILES'
+  FULL_FILES: 'FULL_FILES',
+  SEMANTIC_SEARCH: 'SEMANTIC_SEARCH'
 };
 
 /**
@@ -20,18 +22,22 @@ class ContextFetcher {
    * @param {GitHubClient} githubClient - Optional shared GitHub client (avoids duplicate auth)
    */
   constructor(githubClient = null) {
-    // Default to FULL_FILES if SEMANTIC_SEARCH requested (no longer available)
+    // Get requested strategy
     const requestedStrategy = process.env.CONTEXT_STRATEGY || STRATEGIES.FULL_FILES;
-    this.strategy = requestedStrategy === 'SEMANTIC_SEARCH'
-      ? STRATEGIES.FULL_FILES
-      : requestedStrategy;
-
-    if (requestedStrategy === 'SEMANTIC_SEARCH') {
-      console.warn('[CONTEXT] SEMANTIC_SEARCH not available (Zilliz removed). Using FULL_FILES.');
-    }
+    this.strategy = requestedStrategy;
 
     this.fallbackStrategy = process.env.FALLBACK_STRATEGY || STRATEGIES.FULL_FILES;
     this.githubClient = githubClient || new GitHubClient();
+
+    // Initialize semantic search if enabled
+    if (this.strategy === STRATEGIES.SEMANTIC_SEARCH) {
+      this.semanticSearch = new SemanticSearch();
+      // Parse repository path mappings
+      this.repoPathMapping = this.parseRepoPathMapping();
+    } else {
+      this.semanticSearch = null;
+      this.repoPathMapping = {};
+    }
 
     // Max file size to fetch (100KB default - larger files get truncated)
     this.maxFileSize = parseInt(process.env.MAX_FILE_SIZE || '102400');
@@ -48,11 +54,14 @@ class ContextFetcher {
   }
 
   /**
-   * Initialize context fetcher (no-op since semantic search removed)
+   * Initialize context fetcher
    * @returns {Promise<void>}
    */
   async initialize() {
-    // No initialization needed - semantic search removed
+    // Initialize semantic search if enabled
+    if (this.semanticSearch) {
+      await this.semanticSearch.initialize();
+    }
   }
 
   /**
@@ -66,6 +75,9 @@ class ContextFetcher {
 
     try {
       switch (this.strategy) {
+        case STRATEGIES.SEMANTIC_SEARCH:
+          return await this.fetchSemanticContext(files, prInfo);
+
         case STRATEGIES.FULL_FILES:
           return await this.fetchFullFilesContext(files, prInfo);
 
@@ -220,10 +232,91 @@ class ContextFetcher {
   }
 
   /**
-   * Disconnect and cleanup (no-op since semantic search removed)
+   * SEMANTIC_SEARCH strategy: Use CocoIndex for intelligent context
+   * Falls back to FULL_FILES if semantic search unavailable
+   * @param {Array} files - File objects
+   * @param {Object} prInfo - PR info
+   * @returns {Promise<Array>} Files with semantic context
+   */
+  async fetchSemanticContext(files, prInfo) {
+    console.log(`[CONTEXT] Using SEMANTIC_SEARCH - fetching intelligent context for ${files.length} files`);
+
+    try {
+      // Map GitHub repo to local path
+      const localPath = this.getLocalRepoPath(prInfo.owner, prInfo.repo);
+      if (!localPath) {
+        console.warn(`[CONTEXT] No path mapping for ${prInfo.owner}/${prInfo.repo}, falling back to FULL_FILES`);
+        return await this.fetchFullFilesContext(files, prInfo);
+      }
+
+      // Check if repository is indexed
+      const indexed = await this.semanticSearch.checkRepositoryIndexed(localPath);
+      if (!indexed) {
+        console.warn(`[CONTEXT] Repository not indexed at ${localPath}, falling back to FULL_FILES`);
+        console.warn(`[CONTEXT] To index: cd server/python-service && ./cli.py index ${localPath}`);
+        return await this.fetchFullFilesContext(files, prInfo);
+      }
+
+      // Fetch semantic context for each file
+      const semanticContexts = await this.semanticSearch.getFilesContext(files, localPath);
+
+      // Also fetch full file content (semantic search complements, doesn't replace)
+      const fullFiles = await this.fetchFullFilesContext(files, prInfo);
+
+      // Merge semantic context with full files
+      return fullFiles.map((file, idx) => ({
+        ...file,
+        contextStrategy: 'SEMANTIC_SEARCH',
+        semanticContext: semanticContexts[idx]
+      }));
+
+    } catch (error) {
+      console.error(`[CONTEXT] Semantic search failed: ${error.message}`);
+      console.log('[CONTEXT] Falling back to FULL_FILES');
+      return await this.fetchFullFilesContext(files, prInfo);
+    }
+  }
+
+  /**
+   * Parse REPO_PATH_MAPPING environment variable
+   * Format: {"github-owner/repo": "/local/path/to/repo"}
+   * @returns {Object} Mapping object
+   */
+  parseRepoPathMapping() {
+    const mappingStr = process.env.REPO_PATH_MAPPING;
+    if (!mappingStr) {
+      console.warn('[CONTEXT] REPO_PATH_MAPPING not configured');
+      return {};
+    }
+
+    try {
+      const mapping = JSON.parse(mappingStr);
+      console.log(`[CONTEXT] Loaded ${Object.keys(mapping).length} repository path mappings`);
+      return mapping;
+    } catch (error) {
+      console.error(`[CONTEXT] Failed to parse REPO_PATH_MAPPING: ${error.message}`);
+      return {};
+    }
+  }
+
+  /**
+   * Get local repository path from GitHub owner/repo
+   * @param {string} owner - GitHub owner
+   * @param {string} repo - GitHub repo name
+   * @returns {string|null} Local path or null
+   */
+  getLocalRepoPath(owner, repo) {
+    const key = `${owner}/${repo}`;
+    return this.repoPathMapping[key] || null;
+  }
+
+  /**
+   * Disconnect and cleanup
    */
   async disconnect() {
-    // No cleanup needed - semantic search removed
+    if (this.semanticSearch) {
+      await this.semanticSearch.disconnect();
+    }
   }
 }
 
