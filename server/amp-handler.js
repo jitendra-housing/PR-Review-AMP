@@ -47,15 +47,19 @@ async function handleAmpReview(prUrl) {
 
   const projectRoot = path.resolve(__dirname, '..');
   const isTestMode = process.env.TEST_MODE === 'true';
+  const liteMode = process.env.LITE_MODE === 'true';
   const useRag = process.env.USE_RAG !== 'false';
-  const skill = useRag ? 'pr-review-rag' : 'pr-review';
+  
+  // Lite mode uses pr-review-lite skill (cheapest, no RAG/librarian)
+  // Otherwise use RAG or local clone skill
+  const skill = liteMode ? 'pr-review-lite' : (useRag ? 'pr-review-rag' : 'pr-review');
   const model = (process.env.MODEL || 'sonnet').toLowerCase();
   const modeFlag = model === 'sonnet' ? 'large' : 'smart';
   const reviewCommand = `use ${skill} skill to review PR ${prUrl}`;
 
   console.log('[AMP] Working directory:', projectRoot);
   console.log(`[AMP] Mode: ${isTestMode ? 'TEST (interactive)' : 'PRODUCTION (background)'}`);
-  console.log(`[AMP] Skill: ${skill} (USE_RAG=${useRag})`);
+  console.log(`[AMP] Skill: ${skill} (LITE_MODE=${liteMode}, USE_RAG=${useRag})`);
   console.log(`[AMP] Model: ${model} (--mode ${modeFlag})`);
   console.log('[AMP] -----------------------------------\n');
 
