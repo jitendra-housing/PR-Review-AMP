@@ -181,29 +181,13 @@ npm start
 
 #### Context Strategies for Claude
 
-Claude supports three context strategies to balance review quality and cost:
+Claude supports two context strategies:
 
-**SEMANTIC_SEARCH (Recommended - Best Quality)**
-- Uses MCP semantic search for RAG-style code retrieval
-- Automatically finds related code (imports, dependencies, tests)
-- Provides full file content + semantically related snippets
-- Cost: ~$3-4 per PR (40% cheaper than FULL_FILES)
-- Best for: Complex architectural reviews, production use
-
-**Requirements:**
-```bash
-export CONTEXT_STRATEGY=SEMANTIC_SEARCH
-export MCP_SERVER_ENABLED=true
-export SEMANTIC_SEARCH_LIMIT=10
-export SEMANTIC_SEARCH_THRESHOLD=0.7
-```
-
-**FULL_FILES (Good Balance)**
+**FULL_FILES (Recommended)**
 - Fetches complete file content from GitHub API
 - Provides full context for each changed file
-- No semantic search, just the files being changed
-- Cost: ~$4-5 per PR
-- Best for: Standard reviews without MCP setup
+- Cost: ~$0.20-0.50 per PR
+- Best for: All reviews (default)
 
 **Requirements:**
 ```bash
@@ -211,9 +195,9 @@ export CONTEXT_STRATEGY=FULL_FILES
 ```
 
 **DIFF_ONLY (Fast but Limited)**
-- Only uses patch/diff data (current implementation)
+- Only uses patch/diff data
 - Fastest and cheapest
-- Cost: ~$2 per PR
+- Cost: ~$0.10-0.20 per PR
 - Best for: Simple config changes only
 - ⚠️ **Not recommended** - misses critical context
 
@@ -224,36 +208,10 @@ export CONTEXT_STRATEGY=DIFF_ONLY
 
 **Comparison:**
 
-| Strategy | Review Quality | Cost/PR | Speed | Setup Complexity |
-|----------|---------------|---------|-------|------------------|
-| SEMANTIC_SEARCH | ⭐⭐⭐⭐⭐ Excellent | $3-4 | 3-4 min | Medium (MCP) |
-| FULL_FILES | ⭐⭐⭐⭐ Good | $4-5 | 3 min | Simple |
-| DIFF_ONLY | ⭐⭐ Limited | $2 | 2 min | None |
-
-**MCP Setup (for SEMANTIC_SEARCH):**
-
-1. Install claude-context MCP server:
-   ```bash
-   npm install -g @zilliztech/claude-context
-   ```
-
-2. Configure credentials (Zilliz Cloud + OpenAI):
-   ```bash
-   export ZILLIZ_CLOUD_API_KEY=your-key
-   export OPENAI_API_KEY=your-key
-   ```
-
-3. Run MCP server:
-   ```bash
-   claude-context
-   ```
-
-4. Index your repositories:
-   ```bash
-   # Via MCP tools or automatically on first review
-   ```
-
-See `CLAUDE_INTEGRATION.md` for detailed MCP setup instructions.
+| Strategy | Review Quality | Cost/PR | Speed | Setup |
+|----------|---------------|---------|-------|-------|
+| FULL_FILES | ⭐⭐⭐⭐ Good | $0.20-0.50 | 3-5 min | Simple |
+| DIFF_ONLY | ⭐⭐ Limited | $0.10-0.20 | 2 min | Simple |
 
 ### Amp CLI (Original Implementation)
 
@@ -295,11 +253,8 @@ npm start
 | Variable | Description | Required | Default |
 |----------|-------------|----------|---------|
 | `ANTHROPIC_API_KEY` | Claude API key | ✅ (if AGENT=claude) | - |
-| `CONTEXT_STRATEGY` | Context strategy: `SEMANTIC_SEARCH`, `FULL_FILES`, `DIFF_ONLY` | ❌ | `SEMANTIC_SEARCH` |
-| `MCP_SERVER_ENABLED` | Enable MCP semantic search | ❌ | `true` |
-| `SEMANTIC_SEARCH_LIMIT` | Max related code snippets per file | ❌ | `10` |
-| `SEMANTIC_SEARCH_THRESHOLD` | Relevance score threshold (0-1) | ❌ | `0.7` |
-| `FALLBACK_STRATEGY` | Strategy if primary fails: `FULL_FILES`, `DIFF_ONLY` | ❌ | `FULL_FILES` |
+| `CONTEXT_STRATEGY` | Context strategy: `FULL_FILES`, `DIFF_ONLY` | ❌ | `FULL_FILES` |
+| `FALLBACK_STRATEGY` | Strategy if primary fails: `FULL_FILES`, `DIFF_ONLY` | ❌ | `DIFF_ONLY` |
 
 ### Amp-Specific Variables
 

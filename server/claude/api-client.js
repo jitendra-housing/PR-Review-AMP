@@ -53,6 +53,15 @@ class ClaudeAPIClient {
 
     if (enableExtendedThinking && (this.model.includes('sonnet') || this.model.includes('opus'))) {
       const thinkingBudget = parseInt(process.env.THINKING_TOKEN_BUDGET || '10000');
+
+      // IMPORTANT: max_tokens must be greater than thinking.budget_tokens
+      // max_tokens = thinking_tokens + output_tokens
+      if (maxTokens <= thinkingBudget) {
+        const adjustedMaxTokens = thinkingBudget + 4096; // thinking budget + output buffer
+        console.log(`[CLAUDE] Adjusting max_tokens from ${maxTokens} to ${adjustedMaxTokens} (thinking budget: ${thinkingBudget})`);
+        requestOptions.max_tokens = adjustedMaxTokens;
+      }
+
       requestOptions.thinking = {
         type: 'enabled',
         budget_tokens: thinkingBudget
