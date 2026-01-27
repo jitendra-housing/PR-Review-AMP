@@ -2,9 +2,8 @@ const GitHubClient = require('./github-client');
 
 /**
  * Context fetching strategies:
- * - DIFF_ONLY: Only patch/diff (current, fast but limited)
- * - FULL_FILES: Fetch complete file content from GitHub
- * Note: SEMANTIC_SEARCH removed (Zilliz) - will be replaced by CocoIndex
+ * - DIFF_ONLY: Only patch/diff (fast but limited)
+ * - FULL_FILES: Fetch complete file content from GitHub (recommended)
  */
 const STRATEGIES = {
   DIFF_ONLY: 'DIFF_ONLY',
@@ -20,17 +19,17 @@ class ContextFetcher {
    * @param {GitHubClient} githubClient - Optional shared GitHub client (avoids duplicate auth)
    */
   constructor(githubClient = null) {
-    // Default to FULL_FILES if SEMANTIC_SEARCH requested (no longer available)
+    // Default to FULL_FILES
     const requestedStrategy = process.env.CONTEXT_STRATEGY || STRATEGIES.FULL_FILES;
-    this.strategy = requestedStrategy === 'SEMANTIC_SEARCH'
-      ? STRATEGIES.FULL_FILES
-      : requestedStrategy;
+    this.strategy = requestedStrategy;
 
-    if (requestedStrategy === 'SEMANTIC_SEARCH') {
-      console.warn('[CONTEXT] SEMANTIC_SEARCH not available (Zilliz removed). Using FULL_FILES.');
+    // Legacy strategy redirects
+    if (requestedStrategy === 'SEMANTIC_SEARCH' || requestedStrategy === 'DEPENDENCY_AWARE') {
+      console.warn(`[CONTEXT] ${requestedStrategy} not available. Using FULL_FILES.`);
+      this.strategy = STRATEGIES.FULL_FILES;
     }
 
-    this.fallbackStrategy = process.env.FALLBACK_STRATEGY || STRATEGIES.FULL_FILES;
+    this.fallbackStrategy = process.env.FALLBACK_STRATEGY || STRATEGIES.DIFF_ONLY;
     this.githubClient = githubClient || new GitHubClient();
 
     // Max file size to fetch (100KB default - larger files get truncated)
@@ -173,6 +172,17 @@ class ContextFetcher {
     return enrichedFiles;
   }
 
+  /**
+   * Truncate content to max characters
+   * @param {string} content - Content to truncate
+   * @param {number} maxChars - Maximum characters
+   * @returns {string} Truncated content
+   */
+  truncateContent(content, maxChars) {
+    if (!content || content.length <= maxChars) return content;
+
+    return content.substring(0, maxChars) + '\n... [truncated]';
+  }
 
   /**
    * Get current strategy name

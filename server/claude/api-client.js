@@ -31,10 +31,11 @@ class ClaudeAPIClient {
    * @param {Array} system - System prompt blocks (with cache_control)
    * @param {number} maxTokens - Maximum tokens for response
    * @param {boolean} stream - Enable streaming
+   * @param {Object} options - Additional options (thinking, etc.)
    * @returns {Object|Stream} Response or stream
    */
-  async sendMessage(messages, system, maxTokens = 4096, stream = false) {
-    const options = {
+  async sendMessage(messages, system, maxTokens = 4096, stream = false, options = {}) {
+    const requestOptions = {
       model: this.model,
       max_tokens: maxTokens,
       system: system,
@@ -42,14 +43,37 @@ class ClaudeAPIClient {
     };
 
     if (stream) {
-      options.stream = true;
+      requestOptions.stream = true;
+    }
+
+    // Enable extended thinking if requested (and supported by model)
+    const enableExtendedThinking = options.enableExtendedThinking !== undefined
+      ? options.enableExtendedThinking
+      : process.env.ENABLE_EXTENDED_THINKING === 'true';
+
+    if (enableExtendedThinking && (this.model.includes('sonnet') || this.model.includes('opus'))) {
+      const thinkingBudget = parseInt(process.env.THINKING_TOKEN_BUDGET || '10000');
+
+      // IMPORTANT: max_tokens must be greater than thinking.budget_tokens
+      // max_tokens = thinking_tokens + output_tokens
+      if (maxTokens <= thinkingBudget) {
+        const adjustedMaxTokens = thinkingBudget + 4096; // thinking budget + output buffer
+        console.log(`[CLAUDE] Adjusting max_tokens from ${maxTokens} to ${adjustedMaxTokens} (thinking budget: ${thinkingBudget})`);
+        requestOptions.max_tokens = adjustedMaxTokens;
+      }
+
+      requestOptions.thinking = {
+        type: 'enabled',
+        budget_tokens: thinkingBudget
+      };
+      console.log(`[CLAUDE] Extended thinking enabled (${thinkingBudget} token budget)`);
     }
 
     return this.executeWithRetry(async () => {
       if (stream) {
-        return this.client.messages.stream(options);
+        return this.client.messages.stream(requestOptions);
       } else {
-        return this.client.messages.create(options);
+        return this.client.messages.create(requestOptions);
       }
     });
   }
@@ -135,12 +159,20 @@ class ClaudeAPIClient {
   getUsage(response) {
     if (!response.usage) return null;
 
-    return {
+    const usage = {
       input_tokens: response.usage.input_tokens || 0,
       output_tokens: response.usage.output_tokens || 0,
       cache_creation_input_tokens: response.usage.cache_creation_input_tokens || 0,
       cache_read_input_tokens: response.usage.cache_read_input_tokens || 0
     };
+
+    // Log thinking tokens if available
+    if (response.usage.thinking_tokens) {
+      usage.thinking_tokens = response.usage.thinking_tokens;
+      console.log(`[CLAUDE] Thinking tokens used: ${usage.thinking_tokens}`);
+    }
+
+    return usage;
   }
 
   /**
