@@ -96,6 +96,65 @@ Parse JSON to extract:
 - Tests: Files matching `*test*`, `*spec*`, `*Test.java`, `*Tests.swift`, `*_test.go`, `*_test.py`, `*.spec.ts`
 - Critical configs: `.env`, API configs, security/auth configs, database schemas, migrations
 
+### 3b. Classify Change Complexity (for Librarian Optimization)
+
+**CRITICAL: Classify each DEEP REVIEW file by change complexity to optimize Librarian usage:**
+
+For each source code file, analyze the diff patch to determine complexity:
+
+**SIMPLE (No Librarian needed):**
+- `additions + deletions < 20` lines in isolated file
+- Only modifying string literals, constants, or configuration values
+- Comment-only changes or documentation updates
+- Typo fixes, formatting changes
+- Single-line bug fixes (null checks, boundary conditions)
+- Updating hardcoded values (URLs, feature flags, thresholds)
+
+**MODERATE (Minimal Librarian - patterns only):**
+- New functions/methods < 30 lines
+- Adding parameters to existing functions
+- Simple refactors (rename, extract variable)
+- Adding/modifying test cases
+- Updating existing error handling
+- Changes to a single file with no new dependencies
+
+**COMPLEX (Full Librarian required):**
+- New `class`, `struct`, `protocol`, `interface` definitions
+- Changes to dependency injection or service registration
+- Adding new imports/dependencies
+- Cross-file changes (modifying shared utilities, base classes)
+- Architectural changes (new patterns, design changes)
+- Security-related code (auth, encryption, permissions)
+- Database schema changes or migrations
+- API contract changes
+
+**Detection heuristics from diff patch:**
+```
+# Count indicators in the patch
+SIMPLE indicators:
+- Patch contains only literal changes: "old_string" → "new_string"
+- No new import/include statements
+- No new class/struct/protocol keywords
+- Total changes < 20 lines
+
+COMPLEX indicators:
+- New `class`, `struct`, `protocol`, `interface`, `enum` keywords
+- New `import`, `require`, `include`, `use` statements
+- Changes to constructor/init methods
+- `@inject`, `@Autowired`, `container.resolve`, `ServiceLocator` patterns
+- `throws`, `async`, `await` additions to signatures
+- New file creation (status: "added")
+```
+
+**Store complexity classification for each file:**
+```json
+{
+  "src/auth/jwt.swift": "COMPLEX",
+  "src/utils/strings.swift": "SIMPLE", 
+  "src/viewmodels/HomeVM.swift": "MODERATE"
+}
+```
+
 **Create a TODO checklist with categorized files:**
 
 Use `todo_write` to create checklist items:
@@ -115,20 +174,41 @@ Use `todo_write` to create checklist items:
 ⏭️ Skipped files (auto-generated, lock files, binaries): 15 files
 ```
 
-### 4. Cache Codebase Patterns Using RAG (One-Time Cost)
+### 4. Smart Codebase Pattern Learning (Optimized Librarian Usage)
 
 ```bash
 echo "🔎 SERVER: Learning codebase patterns"
 ```
 
-**CRITICAL: Learn all patterns ONCE at the start to avoid repeated RAG queries**
+**CRITICAL: Use Librarian intelligently based on change complexity**
 
 Mark pattern-cache as in-progress:
 ```bash
 todo_write # mark "pattern-cache" as "in-progress"
 ```
 
-**Step 4a: Detect platforms and load guideline files**
+**Step 4a: Determine Librarian Strategy**
+
+Based on the complexity classifications from Step 3b, decide the Librarian strategy:
+
+```
+# Aggregate complexity from all DEEP REVIEW files
+complexity_counts = count(SIMPLE, MODERATE, COMPLEX files)
+
+IF all files are SIMPLE:
+    LIBRARIAN_STRATEGY = "SKIP"
+    # Use only guideline files, no RAG queries
+    
+ELIF any file is COMPLEX:
+    LIBRARIAN_STRATEGY = "FULL_SCOPED"
+    # Invoke Librarian with technology-scoped query
+    
+ELSE (all MODERATE):
+    LIBRARIAN_STRATEGY = "MINIMAL"
+    # Invoke Librarian with minimal query (naming + DI patterns only)
+```
+
+**Step 4b: Detect platforms and load guideline files**
 
 Based on file extensions in the PR, load relevant platform-specific guidelines:
 
@@ -175,10 +255,47 @@ fi
 - **Python:** `.py` → Load `Python.md`
 - **Go:** `.go` → Load `Go.md`
 
-**Step 4b: Ask RAG these questions ONCE and cache results:**
+**Step 4c: Technology-Scoped Directory Mapping**
 
+When invoking Librarian, scope the query to relevant directories only:
+
+| Technology | File Extensions | Scoped Directories |
+|------------|-----------------|-------------------|
+| **iOS** | `.swift`, `.m`, `.h`, `.xib`, `.storyboard` | `ios/`, `iOS/`, `Shared/`, `Core/`, `Common/` |
+| **Android** | `.kt`, `.java` (Android context) | `android/`, `Android/`, `app/`, `common/`, `shared/` |
+| **Web/React** | `.jsx`, `.tsx`, `.js` (frontend) | `web/`, `frontend/`, `src/components/`, `src/pages/`, `src/hooks/` |
+| **Node.js** | `.ts` (backend context) | `server/`, `backend/`, `api/`, `src/services/` |
+| **Python** | `.py` | `backend/`, `scripts/`, `api/`, `src/`, `lib/` |
+| **Go** | `.go` | `cmd/`, `pkg/`, `internal/`, `api/` |
+
+**Step 4d: Conditional Librarian Invocation**
+
+**IF LIBRARIAN_STRATEGY == "SKIP":**
+```bash
+echo "⏭️ Skipping Librarian - all changes are SIMPLE"
+echo "Using guideline files only for review"
+# No librarian call - use only loaded guideline files
+todo_write # mark "pattern-cache" as "completed"
 ```
-Use librarian to ask: "Analyze this codebase and provide comprehensive patterns that a senior developer would check:
+
+**IF LIBRARIAN_STRATEGY == "MINIMAL":**
+```
+Use librarian to ask: "For the [DETECTED_TECHNOLOGY] code in [SCOPED_DIRECTORIES], provide:
+
+1. NAMING CONVENTIONS:
+   - Variable, class, function naming patterns
+   - Prefixes/suffixes used
+
+2. DEPENDENCY INJECTION PATTERNS:
+   - How are classes instantiated?
+   - DI container usage patterns
+
+Provide 2-3 concrete examples for each."
+```
+
+**IF LIBRARIAN_STRATEGY == "FULL_SCOPED":**
+```
+Use librarian to ask: "Analyze the [DETECTED_TECHNOLOGY] code in [SCOPED_DIRECTORIES] directories and provide comprehensive patterns:
 
 1. DEPENDENCY INJECTION PATTERNS:
    - How are classes/ViewModels/Controllers instantiated?
@@ -244,16 +361,30 @@ todo_write # mark "pattern-cache" as "completed"
 
 This cached knowledge acts like a senior developer's mental model of "how we do things here".
 
-**Step 4c: Combine guideline files + RAG patterns**
+**Step 4e: Combine guideline files + RAG patterns**
 
-You now have TWO sources of pattern knowledge:
-1. **Guideline files** (explicit, documented, project-specific) - e.g., iOS.md
-2. **RAG patterns** (learned from codebase analysis)
+You now have pattern knowledge sources based on strategy:
+
+| Strategy | Sources Available |
+|----------|-------------------|
+| **SKIP** | Guideline files only (iOS.md, Web.md, etc.) |
+| **MINIMAL** | Guideline files + naming/DI patterns from scoped RAG |
+| **FULL_SCOPED** | Guideline files + comprehensive patterns from scoped RAG |
 
 **Priority when reviewing:**
 - Guideline files take precedence (explicit team conventions)
 - RAG patterns supplement where guidelines don't cover
 - If conflict, use guideline files and note the discrepancy
+
+**Cost Savings Summary:**
+```
+| Scenario                  | Before (Full RAG) | After (Optimized)      |
+|---------------------------|-------------------|------------------------|
+| Simple config PR          | Full codebase RAG | 0 RAG calls            |
+| iOS-only feature          | Full codebase RAG | iOS directories only   |
+| Multi-platform changes    | Full codebase RAG | 2 scoped queries       |
+| All MODERATE changes      | Full codebase RAG | Minimal patterns query |
+```
 
 ### 5. Review Files Sequentially (No Sub-Agents)
 
@@ -581,18 +712,34 @@ This skill mimics how an experienced developer reviews code:
 
 **Step 1: Setup and classify files**
 - Get list of ALL changed files from GitHub API
-- **Classify files**: Auto-skip, Quick review, Deep review (see Step 3 of main workflow)
+- **Classify files by review depth**: Auto-skip, Quick review, Deep review (see Step 3)
+- **Classify files by complexity**: SIMPLE, MODERATE, COMPLEX (see Step 3b)
 - Create todo_write checklist with pattern-cache + reviewable files only
 - Number them sequentially (f1, f2, f3...)
 - **ALWAYS add final TODO: Post review to GitHub PR**
 - All start with status "todo"
 
-**Step 2: Cache codebase patterns ONCE**
+**Step 2: Smart Pattern Learning (Optimized Librarian)**
+
+Determine strategy based on complexity:
+
+| Complexity Distribution | Strategy | Librarian Usage |
+|------------------------|----------|-----------------|
+| All SIMPLE | SKIP | None (guidelines only) |
+| All MODERATE | MINIMAL | Naming + DI patterns only |
+| Any COMPLEX | FULL_SCOPED | Full patterns, scoped by technology |
+
 - Mark "pattern-cache" as in-progress
-- Use librarian to ask about DI patterns, naming conventions, error handling, code organization
+- Load platform-specific guideline files (iOS.md, Web.md, etc.)
+- **IF strategy != SKIP**: Invoke Librarian with technology-scoped query
+- Scope to relevant directories (iOS → `ios/`, Web → `web/`, etc.)
 - Store patterns in memory for entire review
 - Mark "pattern-cache" as completed
-- **This single query replaces 50+ per-file RAG queries**
+
+**Cost savings vs always-query approach:**
+- Simple PRs: 0 RAG queries (100% savings)
+- Single-platform PRs: 1 scoped query (faster, more precise)
+- Multi-platform PRs: N scoped queries (better context per technology)
 
 **Step 3: Review files sequentially (NO sub-agents)**
 
@@ -665,20 +812,57 @@ export GH_TOKEN="ghp_your_token_here"
 
 ## Example Review Process
 
-### Scenario: Reviewing PR #456 - Authentication Implementation (40 files)
+### Scenario A: Simple Config PR #123 (5 files, all SIMPLE changes)
 
-**Step 1: Classify files**
+**Step 1: Classify files by depth and complexity**
+```
+Total files: 5
+- Auto-skip: 1 file (package-lock.json)
+- Quick review: 2 files (config.json, README.md)
+- Deep review: 2 files (constants.swift, AppConfig.swift)
+
+Complexity classification:
+- constants.swift: SIMPLE (only string literal changes, 8 lines)
+- AppConfig.swift: SIMPLE (feature flag toggle, 3 lines)
+
+LIBRARIAN_STRATEGY = "SKIP" (all SIMPLE)
+```
+
+**Step 2: Load guidelines only (no Librarian)**
+```bash
+todo_write # mark pattern-cache as in-progress
+echo "⏭️ Skipping Librarian - all changes are SIMPLE"
+
+# Load iOS.md guideline (detected .swift files)
+cat .agents/guidelines/Common.md
+cat .agents/guidelines/iOS.md
+
+# No librarian call needed!
+todo_write # mark pattern-cache as completed
+```
+
+**Result:** 0 RAG queries, review uses guideline files only.
+
+---
+
+### Scenario B: iOS Feature PR #456 (40 files, mixed complexity)
+
+**Step 1: Classify files by depth and complexity**
 ```
 Total files: 40
 - Auto-skip: 10 files (package-lock.json, *.generated.*, binaries)
 - Quick review: 8 files (config.json, README.md, etc.)
 - Deep review: 22 files (source code, tests)
 
-todo_write:
-- pattern-cache: Cache codebase patterns (status: todo)
-- f1-f22: 22 deep review files
-- q1-q8: 8 quick review files
-- post: Post review to GitHub PR (status: todo)
+Complexity classification:
+- src/auth/AuthManager.swift: COMPLEX (new class, DI changes)
+- src/viewmodels/LoginVM.swift: COMPLEX (new imports, protocol)
+- src/utils/StringExt.swift: SIMPLE (helper method, 15 lines)
+- src/tests/AuthTests.swift: MODERATE (new test cases)
+... (18 more files)
+
+Has COMPLEX files → LIBRARIAN_STRATEGY = "FULL_SCOPED"
+Detected technology: iOS (.swift files)
 ```
 
 **Step 2: Fetch PR data**
@@ -687,58 +871,104 @@ gh api repos/owner/repo/pulls/456 > pr_data.json
 gh api repos/owner/repo/pulls/456/files > changed_files.json
 ```
 
-**Step 3: Load platform guidelines + cache patterns**
+**Step 3: Load platform guidelines + scoped patterns**
 ```bash
 todo_write # mark pattern-cache as in-progress
 
 # STEP 1: Detect platforms from file extensions
-# Example: If .swift files → Load iOS.md
-# Example: If .kt files → Load Android.md
+# Detected: iOS (.swift files)
 
-# STEP 2: Read guideline files from shared location
-# Check .agents/guidelines/iOS.md (if iOS files)
-# Check .agents/guidelines/Web.md (if React/JS files)
-# Check .agents/guidelines/Android.md (if Android files)
-# Store guideline content in memory
+# STEP 2: Read guideline files
+cat .agents/guidelines/Common.md
+cat .agents/guidelines/iOS.md
 
-# STEP 3: Query RAG for codebase patterns
-librarian: "Analyze this codebase comprehensively and provide:
+# STEP 3: Query RAG with SCOPED directories (iOS only)
+librarian: "Analyze the iOS code in ios/, iOS/, Shared/, Core/ directories and provide:
 - DI patterns (container.resolve, factories, service locators, singletons)
 - Naming conventions (variables, classes, constants, functions, prefixes/suffixes)
 - Error handling (try/catch, Result types, error propagation, logging)
-- Code organization (architecture, file sizes, method sizes, separation of concerns)
+- Code organization (architecture, file sizes, method sizes)
 - Module/import patterns
-- Common code patterns (async, null handling, constants, config management)
+- Common code patterns (async, optionals, constants)
 - Test patterns (naming, mocks, assertions)
 
 Provide concrete examples from this repository for each."
 
 # STEP 4: Combine both sources
-# - Guideline files = explicit team conventions (priority)
-# - RAG patterns = learned from codebase (supplementary)
-# Store ALL in memory - this is the senior developer's knowledge base
-
 todo_write # mark pattern-cache as completed
 ```
+
+**Result:** 1 scoped RAG query (iOS dirs only) vs full codebase query.
+
+---
+
+### Scenario C: Multi-Platform PR #789 (iOS + Web changes)
+
+**Step 1: Classify files by depth and complexity**
+```
+Total files: 25
+- Deep review: 15 iOS files (.swift), 8 Web files (.tsx)
+- Multiple COMPLEX files in both platforms
+
+Detected technologies: iOS + Web
+LIBRARIAN_STRATEGY = "FULL_SCOPED" (multiple scoped queries)
+```
+
+**Step 2: Load guidelines + multiple scoped patterns**
+```bash
+# Load both guideline files
+cat .agents/guidelines/Common.md
+cat .agents/guidelines/iOS.md
+cat .agents/guidelines/Web.md
+
+# Query 1: iOS patterns (scoped)
+librarian: "Analyze iOS code in ios/, Shared/, Core/ directories..."
+
+# Query 2: Web patterns (scoped)
+librarian: "Analyze Web/React code in web/, frontend/, src/components/ directories..."
+```
+
+**Result:** 2 scoped RAG queries vs 1 full codebase query (more precise context).
+
+---
+
+### Scenario D: MODERATE-only PR #999 (Refactoring)
+
+**Step 1: Classify complexity**
+```
+All files: MODERATE (simple refactors, test updates)
+LIBRARIAN_STRATEGY = "MINIMAL"
+```
+
+**Step 2: Minimal Librarian query**
+```bash
+librarian: "For the iOS code in ios/, Shared/ directories, provide:
+1. Naming conventions (2-3 examples)
+2. DI patterns (2-3 examples)"
+```
+
+**Result:** 1 minimal RAG query (only naming + DI patterns).
+
+---
 
 **Step 4: Review files sequentially**
 
 ```bash
-# f1: src/auth/jwt.js
+# f1: src/auth/jwt.swift
 todo_write # mark f1 as in-progress
-gh api repos/owner/repo/contents/src/auth/jwt.js > jwt_full.js
+gh api repos/owner/repo/contents/src/auth/jwt.swift > jwt_full.swift
 # Analyze diff, apply CACHED patterns, check metrics
 # Finding: HIGH - Hardcoded JWT secret at line 34
 todo_write # mark f1 as completed
 
-# f2: src/auth/tokens.js
+# f2: src/auth/tokens.swift
 todo_write # mark f2 as in-progress
-gh api repos/owner/repo/contents/src/auth/tokens.js > tokens_full.js
+gh api repos/owner/repo/contents/src/auth/tokens.swift > tokens_full.swift
 # Analyze diff, apply CACHED patterns
 # Finding: MEDIUM - Missing token expiration check
 todo_write # mark f2 as completed
 
-# ... continue for all 22 deep files
+# ... continue for all deep files
 
 # q1: config.json (quick review)
 todo_write # mark q1 as in-progress
@@ -746,7 +976,7 @@ todo_write # mark q1 as in-progress
 # No issues found
 todo_write # mark q1 as completed
 
-# ... continue for all 8 quick files
+# ... continue for all quick files
 ```
 
 **Step 5: Compile review**
@@ -782,4 +1012,4 @@ rm -f review_comment.md pr_data.json changed_files.json
 todo_write: mark "post" as "completed"
 ```
 
-This is how a senior developer reviews - with full context via RAG and comprehensive understanding.
+This is how a senior developer reviews - with optimized RAG usage based on change complexity and technology scope.
