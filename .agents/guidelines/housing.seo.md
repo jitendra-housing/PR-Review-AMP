@@ -1,39 +1,38 @@
 # housing.seo Repository Guidelines
 
-Comprehensive coding guidelines and standards for the **housing.seo** repository (https://github.com/elarahq/housing.seo).
+Comprehensive coding guidelines, patterns, and conventions for the **housing.seo** repository (https://github.com/elarahq/housing.seo).
+
+**Framework:** Django 3.2 (Python)  
+**Purpose:** SEO service for HTML tags, meta information, and links generation
 
 ---
 
 ## Table of Contents
-1. [Project Overview](#project-overview)
-2. [Technology Stack](#technology-stack)
-3. [Code Style & Formatting](#code-style--formatting)
-4. [Architecture & Folder Structure](#architecture--folder-structure)
-5. [Component Patterns](#component-patterns)
-6. [State Management](#state-management)
-7. [Error Handling & Logging](#error-handling--logging)
-8. [Testing Requirements](#testing-requirements)
-9. [Performance Guidelines](#performance-guidelines)
-10. [Security Requirements](#security-requirements)
-11. [Build & Deployment](#build--deployment)
-12. [PR Review Checklist](#pr-review-checklist)
-13. [Common Issues](#common-issues)
+
+1. [Project Overview](#1-project-overview)
+2. [Code Style & Naming](#2-code-style--naming)
+3. [View Patterns](#3-view-patterns)
+4. [Decorator Patterns](#4-decorator-patterns)
+5. [Model/Entity Patterns](#5-modelentity-patterns)
+6. [Class Patterns](#6-class-patterns)
+7. [Error Handling & Logging](#7-error-handling--logging)
+8. [Response Patterns](#8-response-patterns)
+9. [Database & Caching Patterns](#9-database--caching-patterns)
+10. [URL Routing Patterns](#10-url-routing-patterns)
+11. [Import Patterns](#11-import-patterns)
+12. [Middleware Patterns](#12-middleware-patterns)
+13. [Testing Patterns](#13-testing-patterns)
+14. [Security Patterns](#14-security-patterns)
+15. [Configuration Patterns](#15-configuration-patterns)
+16. [Performance Patterns](#16-performance-patterns)
+17. [PR Review Checklist](#17-pr-review-checklist)
+18. [Common Violations & Fixes](#18-common-violations--fixes)
 
 ---
 
-## Project Overview
+## 1. Project Overview
 
-The housing.seo service is a **Django-based SEO service** that generates HTML tags, meta information, and links for the Housing Main Website.
-
-**Primary Functions:**
-- Title, meta, and description generation
-- Event schema and breadcrumb interlinking
-- Sitemap submission to search engines
-- Internal linking between pages
-
----
-
-## Technology Stack
+### Technology Stack
 
 | Component | Technology |
 |-----------|------------|
@@ -45,113 +44,6 @@ The housing.seo service is a **Django-based SEO service** that generates HTML ta
 | Search | MongoDB, BigQuery |
 | Deployment | Docker + Nginx |
 | Monitoring | New Relic APM |
-| Logging | File-based (stdout in Docker) |
-
----
-
-## Code Style & Formatting
-
-### 🚨 IMPORTANT: No Linting Tools
-
-This project does **NOT** use:
-- ❌ `.eslintrc` or equivalent
-- ❌ `.prettierrc` or equivalent  
-- ❌ Black formatter
-- ❌ Flake8 or similar
-- ❌ Pre-commit hooks
-
-**Code quality relies on manual PR review and following established patterns.**
-
-### Naming Conventions
-
-```python
-# Classes: PascalCase
-class FooterModel:
-    pass
-
-# Functions: snake_case
-def get_polygon_data():
-    pass
-
-# Constants: UPPER_CASE
-ALL_INDIA_POLYGON_ID = "f7f5d7f50dde9452144e"
-
-# Private methods: _leading_underscore
-def _prepare_meta_bin(self):
-    pass
-
-# Local variables: snake_case
-polygon_uuid = "f7f5d7f50dde9452144e"
-```
-
-### Spacing & Indentation
-
-```python
-# Use 2-space indentation (project convention)
-class ExampleClass:
-  def __init__(self):
-    self.value = None
-
-# No strict line length (80-120+ chars accepted)
-```
-
-### Encoding Declaration
-
-```python
-# Always include for files with non-ASCII characters
-# -*- coding: utf-8 -*-
-```
-
-### Import Order
-
-```python
-# 1. Django imports first
-from django.views import debug
-from django.core.exceptions import PermissionDenied
-from django.http.response import HttpResponse
-
-# 2. Standard library imports
-import json
-import traceback
-import requests
-from datetime import datetime
-
-# 3. Third-party imports
-import aerospike
-import newrelic.agent
-
-# 4. Local imports
-from lib.process_logger import ProcessLogger
-from footer_common.classes.seo_basic_meta import SeoBasicMeta
-from footer_api.helpers import getcrumb
-```
-
-### Variable Naming
-
-```python
-# ✅ GOOD: Descriptive names
-polygon_uuid = "f7f5d7f50dde9452144e"
-aero_data = polygon.aero_data
-is_active = status_id == Polygon.STATUSES['ACTIVE']
-retry_count = 3
-
-# ❌ BAD: Single letter variables (except loops)
-p = Polygon(id)  # ❌
-polygon = Polygon(id)  # ✅
-
-# ❌ BAD: Ambiguous abbreviations
-apt_id  # ❌ Unclear
-apartment_type_id  # ✅ Clear
-
-# ✅ Consistent project abbreviations
-est = establishment
-poly = polygon
-aero = aerospike
-```
-
----
-
-## Architecture & Folder Structure
 
 ### Repository Structure
 
@@ -186,9 +78,6 @@ housing.seo/
 ├── establishments/         # Establishment entity
 ├── new_projects/           # Projects entity
 ├── crons/                  # Scheduled tasks (Celery)
-│   ├── management/commands/
-│   │   └── run_cron.py
-│   └── classes/
 ├── internal_linking/       # Link generation
 ├── config/                 # Configuration
 ├── tests/                  # Test files
@@ -196,246 +85,909 @@ housing.seo/
 ├── pytest.ini              # Pytest config
 ├── requirements.txt        # Dependencies
 ├── Dockerfile              # Production image
-├── Dockerfile_cron         # Cron image
 └── nginx.conf              # Nginx config
 ```
 
-### Entity-Based Module Pattern
+### 🚨 IMPORTANT: No Linting Tools
 
-Each entity follows consistent structure:
+This project does **NOT** use:
+- ❌ Black formatter
+- ❌ Flake8 or similar
+- ❌ Pre-commit hooks
+- ❌ isort
+
+**Code quality relies on manual PR review and following established patterns.**
+
+---
+
+## 2. Code Style & Naming
+
+### 2.1 Indentation (CRITICAL)
+
+**Use 2 spaces for indentation (NOT 4):**
 
 ```python
-# polygons/classes/polygon.py
-class Polygon(FooterModel, TaxonomyHelper, PolygonHelper):
-    db_name = settings.DATABASE_ALIASES['HR']
-    table_name = 'polygons'
-    aero_set_name = 'polygons'
-    key_name = 'uuid'
-    
-    STATUSES = {
-        'ACTIVE': 1,
-        'INACTIVE': 2
-    }
-    
-    def __init__(self, id, aero_fetch=True, bins=DEFAULT_BINS):
-        pass
+# ✅ CORRECT - 2 spaces
+def getProfile(request):
+  profile = {}
+  for key in cp.paramMap:
+    if key in ['sort_key', 'routing_range']:
+      continue
+    value = request.GET.get(key)
+    if value:
+      if cp.paramMap[key]['type'] == "entity":
+        profile[key] = value
+  return profile
+
+# ❌ WRONG - 4 spaces
+def getProfile(request):
+    profile = {}
+    for key in cp.paramMap:
+        value = request.GET.get(key)
+```
+
+### 2.2 Variable Naming
+
+**camelCase for variables:**
+
+```python
+# ✅ CORRECT
+filteredResults = []
+polyMetadata = polygon.aero_data.get('meta')
+requestParams = dict(request.GET)
+aeroData = polygon.aero_data
+urlTemplate = getUrlTemplateFromAero(featureType)
+
+# ❌ WRONG - snake_case for variables
+filtered_results = []
+poly_metadata = polygon.aero_data.get('meta')
+```
+
+**Suffix conventions:**
+
+```python
+# Lists use _list suffix
+urls_list = []
+polygon_ids_list = []
+
+# Dicts use _map suffix
+entity_map = {}
+feature_map = {}
+```
+
+### 2.3 Function Naming
+
+**camelCase for public functions (primary pattern):**
+
+```python
+# ✅ CORRECT - camelCase
+def getPing(request):
+  pass
+
+def getProfile(request):
+  pass
+
+def getTransactionPageMeta(request):
+  pass
+
+def addHeader(request, response):
+  pass
+
+# ✅ ACCEPTABLE - snake_case for helpers
+def get_profile(request_params):
+  pass
+
+def validate_params(request_type, params_list):
+  pass
+```
+
+### 2.4 Class Naming
+
+**PascalCase always:**
+
+```python
+# ✅ CORRECT
+class ResponseHandler(object):
+  pass
+
+class ProcessLogger(object, metaclass=Singleton):
+  pass
+
+class AerospikeClient:
+  pass
+
+class FooterModel(FooterAeroHandler, FooterApiHandler):
+  pass
+
+class TaxonomyHelper:
+  pass
+```
+
+### 2.5 Constant Naming
+
+**UPPER_SNAKE_CASE:**
+
+```python
+# ✅ CORRECT
+STATUSES = {
+  'ACTIVE': 1,
+  'INACTIVE': 2
+}
+
+DEFAULT_BINS = ['breadcrumbs', 'topbuildermeta', 'meta']
+
+AEROSPIKE_POOL_SIZE = 10
+
+FEATURE_TYPE_MAPPING = {
+  "33": "country",
+  "545": "state",
+}
+
+ALL_INDIA_POLYGON_ID = "f7f5d7f50dde9452144e"
+```
+
+### 2.6 Spacing Around Operators
+
+```python
+# ✅ CORRECT - Spaces around =
+profile['poly'] = [uuid]
+aerodata = Polygon(k).aero_data
+feature = meta['featuretype']
+name = meta['name']
+
+# ✅ CORRECT - Spaces around comparison
+if service == 'buy':
+  pass
+
+if profile.get('poly'):
+  pass
+
+# ✅ CORRECT - Dictionary key-value spacing
+STATUSES = {
+  'ACTIVE': 1,   # Space after colon
+  'INACTIVE': 2
+}
 ```
 
 ---
 
-## Component Patterns
+## 3. View Patterns
 
-### Handler Classes
+### 3.1 Function-Based Views (Primary Pattern)
+
+**All views are function-based, NOT class-based:**
 
 ```python
-# Pattern: *ResponseHandler, *Handler, *ApiHandler
-class ApiHandler(object):
-    def __init__(self, *args, **kwargs):
-        if kwargs.get('api_url'):
-            self.api_url = kwargs.get('api_url')
-        self.api_data = {}
-    
-    def set_api_data(self, api_data={}):
-        if api_data == {}:
-            response = requests.get(self.api_url)
-            self.api_data = json.loads(response.content)
-            self.response_code = response.status_code
-        else:
-            self.api_data = api_data
-            self.response_code = 200
-        return self.api_data
-    
-    def get_api_data(self):
-        if self.api_data == {}:
-            self.set_api_data()
-        return self.api_data
+# ✅ CORRECT - Function-based view
+def getPing(request):
+  return addHeader(request, HttpResponse(
+    json.dumps({'version': 0, 'statusCode': '2XX', 'data': 'pong'}), 
+    status=200
+  ))
+
+# ❌ WRONG - Class-based view (not used)
+class PingView(View):
+  def get(self, request):
+    pass
 ```
 
-### Decorator Pattern
+### 3.2 View Structure Pattern (REQUIRED)
+
+```python
+@csrf_exempt
+def get_generic_canonical_urls(request):
+  """
+  Docstring with API documentation
+  """
+  # 1. Set main_method for logging/tracing
+  request.main_method = 'views.get_generic_canonical_urls'
+  
+  # 2. Validate request parameters
+  try:
+    pages_data, entity_id, entity_name = validateGetCanonical(request)
+  except Exception as e:
+    response, status = ResponseHandler().get_400_response(str(e))
+    return addHeader(request, HttpResponse(json.dumps(response)))
+  
+  # 3. Process business logic
+  try:
+    result = process_data(pages_data, entity_id)
+  except Exception as e:
+    ProcessLogger.error(traceback.format_exc())
+    response, status = ResponseHandler().get_404_response()
+    return addHeader(request, HttpResponse(json.dumps(response), status=status))
+  
+  # 4. Return response with addHeader wrapper
+  response, status = ResponseHandler().get_200_response(result)
+  return addHeader(request, HttpResponse(json.dumps(response), status=status))
+```
+
+### 3.3 Key View Requirements
+
+1. **Set `request.main_method`** at view entry for logging
+2. **Wrap response with `addHeader()`** always
+3. **Use `HttpResponse` with `json.dumps()`** for JSON
+4. **Use try-except** for error handling
+5. **Use `ResponseHandler`** for response formatting
+
+---
+
+## 4. Decorator Patterns
+
+### 4.1 Decorator Stacking Order (CRITICAL)
+
+**Order matters - outermost to innermost:**
+
+```python
+# ✅ CORRECT ORDER
+@redirect_to_new_canonicals        # 1st - Handle canonical redirects
+@add_housing_edge_links            # 2nd - Add edge links
+@redirect_specific_legacy_urls     # 3rd - Legacy redirects
+@change_4bhk_apartment_type_id     # 4th - Filter transformations
+def apiV2(request, service):
+  request.main_method = 'views.apiV2'
+  # implementation
+
+# ✅ CORRECT - nginx_caching outermost
+@nginx_caching                     # 1st - HTTP caching headers
+@csrf_exempt                       # 2nd - CSRF exemption
+def get_generic_canonical_urls(request):
+  pass
+```
+
+### 4.2 Standard Decorator Implementation
 
 ```python
 from functools import wraps
 
-def nginx_caching(orig_func):
-    """Decorator to set caching headers for successful responses"""
-    @wraps(orig_func)
-    def wrapper(request, *args, **kwargs):
-        response = orig_func(request, *args, **kwargs)
-        try:
-            content = json.loads(response.content)
-            if content.get('error', {}).get('status_code', 200) != 200:
-                return response
-        except Exception as e:
-            pass
-        return addCustomHeader(response)
-    return wrapper
+def allow_internal_requests_only(orig_func):
+  @wraps(orig_func)
+  def wrapper(request, *args, **kwargs):
+    if settings.DEBUG or '.internal.' in request.get_host() or '.svc.cluster.local' in request.get_host():
+      return orig_func(request, *args, **kwargs)
+    else:
+      return HttpResponseForbidden(json.dumps({
+        'status': 'error',
+        'message': 'You are not authorized'
+      }), content_type='application/json')
+  return wrapper
 
 # Usage
-@nginx_caching
-@redirect_to_new_canonicals
-def apiV2(request, service, *args, **kwargs):
-    pass
+@allow_internal_requests_only
+def internal_only_api(request):
+  pass
 ```
 
-### Decorator Stacking Order (CRITICAL)
+### 4.3 Validation Decorator Pattern
 
 ```python
-# ✅ CORRECT ORDER - outermost to innermost
-@nginx_caching                    # 1. Cache control (outermost)
-@redirect_to_new_canonicals       # 2. URL redirection
-@check_de_indexing                # 3. Content filtering
-@polygon_page_handler             # 4. Entity processing
-@change_4bhk_apartment_type_id    # 5. Parameter transformation
-def apiV2(request, service):
-    pass
+def validate_params(request_type, params_list):
+  def cache_decorator(func):
+    @wraps(func)
+    def _wrapper(request):
+      if request_type == 'GET':
+        params = request.GET.dict()
+      else:
+        params = json.loads(request.body)
+      
+      flag = True
+      for param_name in params_list:
+        flag = flag and bool(params.get(param_name))
+      
+      if flag:
+        return func(request)
+      else:
+        return add_header(request, HttpResponseBadRequest(json.dumps({
+          'error': 'params missing, params required are {}'.format(params_list)
+        })))
+    return _wrapper
+  return cache_decorator
+
+# Usage
+@validate_params('GET', ['entity', 'entity_ids', 'service'])
+def fetch_entity_taxonomy_urls(request):
+  # params are guaranteed to be present
+  pass
 ```
 
-### Middleware Pattern
+### 4.4 Caching Decorator Pattern
 
 ```python
-from django.utils.deprecation import MiddlewareMixin
-
-class UUIDMiddleware(MiddlewareMixin):
-    def process_request(self, request):
-        request.log_messages = []
-        request.main_method = 'Undefined'
-        request.start_time = datetime.datetime.now()
-        request.uuid = uuid.uuid1()
-
-class LoggerMiddleware(MiddlewareMixin):
-    def process_response(self, request, response):
-        request.status_code = response.status_code
-        request.finish_time = datetime.datetime.now()
-        ProcessLogger.output_logs()
+def nginx_caching(orig_func):
+  """Decorator to set caching headers for successful responses"""
+  @wraps(orig_func)
+  def wrapper(request, *args, **kwargs):
+    response = orig_func(request, *args, **kwargs)
+    try:
+      content = json.loads(response.content)
+      if content.get('error', {}).get('status_code', 200) != 200:
         return response
+    except Exception as e:
+      pass
+    return addCustomHeader(response)
+  return wrapper
 ```
 
-### Singleton Pattern
+---
+
+## 5. Model/Entity Patterns
+
+### 5.1 Entity Class Pattern (REQUIRED)
+
+```python
+class Polygon(FooterModel, TaxonomyHelper, PolygonSandwichUrlCacher, PolygonHelper):
+  # Class-level configuration (REQUIRED)
+  db_name = settings.DATABASE_ALIASES['HR']
+  table_name = 'polygons'
+  db_columns = ["bbox.url_name as bburlname", "bbox.uuid as cityuuid", ...]
+  join_str = "LEFT OUTER JOIN polygons as bbox ON bbox.uuid = polygons.bounding_box_uuids[1]"
+  aero_set_name = 'polygons'
+  key_name = 'uuid'
+  
+  # Status constants as class attribute dict
+  STATUSES = {
+    'ACTIVE': 1,
+    'INACTIVE': 2
+  }
+  
+  # Default bins as class constant
+  DEFAULT_BINS = ['breadcrumbs', 'topbuildermeta', 'meta', 'polyinx', 'collections']
+  
+  def __init__(self, id, aero_fetch=True, bins=DEFAULT_BINS):
+    self.id = id
+    self.city = None
+    self.featured_localities = None
+    self.api_url = "{}/api/v1/polygon/details/{}".format(
+      settings.SERVICE_URLS['regions']['internal'], 
+      self.id
+    )
+    # Initialize parent class
+    FooterModel.__init__(self, aero_fetch=aero_fetch, bins=bins)
+
+  @classmethod
+  def get_polygon(cls, polygon_uuid):
+    """Factory method - returns correct subclass"""
+    polygon = Polygon(polygon_uuid)
+    try:
+      if int(polygon.aero_data.meta.get('featuretype')) in [37, 1002, 1003, 546, 1005]:
+        from polygons.classes.city import City
+        city = City(polygon_uuid, aero_fetch=False)
+        city.copy_data_from_polygon(polygon)
+        polygon = city
+    except:
+      pass
+    return polygon
+
+  def is_valid(self):
+    return bool(self.aero_data.meta) and self.aero_data.meta['status_id'] == Polygon.STATUSES['ACTIVE']
+  
+  @classmethod
+  def aero_required_fields(cls):
+    return ['bburlname', 'displayname', 'name']
+```
+
+### 5.2 Entity Class Requirements
+
+1. **Multiple inheritance** from mixins and base class
+2. **Class-level configuration**: `db_name`, `table_name`, `aero_set_name`, `key_name`
+3. **Status constants** as class dict attribute
+4. **DEFAULT_BINS** as class constant
+5. **Initialize parent** in `__init__`
+6. **Factory methods** with `@classmethod`
+7. **`is_valid()` method** for validation
+
+### 5.3 Batch Processing Pattern
+
+```python
+@classmethod
+def find_by_ids_in_batches(cls, ids, batch_size=100, bins=['meta']):
+  for i in range(0, len(ids), batch_size):
+    yield cls.aero_find_many(ids[i:i+batch_size], bins=bins)
+
+# Usage
+for establishments in Establishment.find_by_ids_in_batches(est_ids, bins=['meta', 'search_count']):
+  for establishment in establishments:
+    try:
+      process(establishment)
+    except Exception as e:
+      pass
+```
+
+---
+
+## 6. Class Patterns
+
+### 6.1 Multiple Inheritance Pattern
+
+```python
+# ✅ CORRECT - Multiple inheritance from mixins
+class Polygon(FooterModel, TaxonomyHelper, PolygonSandwichUrlCacher, PolygonHelper):
+  pass
+
+class City(Polygon, CityHelper):
+  pass
+
+class Builder(FooterModel, TaxonomyHelper, BuilderHelper):
+  pass
+```
+
+### 6.2 Singleton Pattern (Metaclass)
 
 ```python
 class Singleton(type):
-    _instances = {}
-    def __call__(cls, *args, **kwargs):
+  _instances = {}
+  def __call__(cls, *args, **kwargs):
+    if cls not in cls._instances:
+      cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
+    return cls._instances[cls]
+
+class ProcessLogger(object, metaclass=Singleton):
+  def __init__(self):
+    process_logger = self
+    process_logger.logger_object = Logger()
+  
+  @classmethod
+  def logger(cls):
+    try:
+      process_logger = ProcessLogger()
+      try:
+        process_logger.logger_object
+      except:
+        cls.set_process()
+      return process_logger.logger_object.logger
+    except:
+      return logging.getLogger()
+```
+
+### 6.3 Thread-Safe Singleton
+
+```python
+class ThreadSafeSingleton(type):
+  """Thread-safe singleton with double-checked locking"""
+  _instances = {}
+  _locks = {}
+  _locks_creation_lock = threading.Lock()
+
+  def __call__(cls, *args, **kwargs):
+    if cls not in cls._instances:
+      if cls not in cls._locks:
+        with cls._locks_creation_lock:
+          if cls not in cls._locks:
+            cls._locks[cls] = threading.Lock()
+      
+      lock = cls._locks[cls]
+      with lock:
         if cls not in cls._instances:
-            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
-        return cls._instances[cls]
+          try:
+            instance = super(ThreadSafeSingleton, cls).__call__(*args, **kwargs)
+            cls._instances[cls] = instance
+          except Exception:
+            raise
+    return cls._instances[cls]
 
-class ProcessLogger(object, metaclass=Singleton):
-    def __init__(self):
-        self.logger_object = Logger()
+class RedisSingleton(metaclass=ThreadSafeSingleton):
+  @classmethod
+  def get_redis_connection(cls):
+    singleton_obj = cls()
+    return singleton_obj.redis_client
 ```
 
----
-
-## State Management
-
-### Request State (ProcessLogger)
-
-```python
-from lib.process_logger import ProcessLogger
-
-class ProcessLogger(object, metaclass=Singleton):
-    @classmethod
-    def info(cls, msg, ignore_request_check=False):
-        if ignore_request_check:
-            ProcessLogger.logger().info(msg)
-        else:
-            request = CrequestMiddleware.get_request()
-            if request is not None:
-                request_id = request.META.get('HTTP_X_REQUEST_ID', 'BE_REQUEST')
-                formatted_msg = f"request_id= {request_id} msg = {msg}"
-                request.log_messages.append(['info', formatted_msg])
-            else:
-                ProcessLogger.logger().info(msg)
-```
-
-### Aerospike Cache State
-
-```python
-class Polygon(FooterModel):
-    aero_set_name = 'polygons'
-    DEFAULT_BINS = [
-        'breadcrumbs', 'topbuildermeta', 'meta', 'polyinx', 
-        'collections', 'inventory', 'establishment', 'entity_links'
-    ]
-    
-    def __init__(self, id, aero_fetch=True, bins=DEFAULT_BINS):
-        self.id = id
-        FooterModel.__init__(self, aero_fetch=aero_fetch, bins=bins)
-```
-
-### FooterModel (Base ORM)
+### 6.4 Abstract Base Class Pattern
 
 ```python
 class FooterModel(FooterAeroHandler, FooterApiHandler):
-    def __init__(self, aero_fetch=True, prefetch=[], bins=[]):
-        self.db_data = DictInstance({})
-        self.aero_data = DictInstance({})
-        self.api_data = DictInstance({})
-        FooterAeroHandler.__init__(self, prefetch=prefetch, bins=bins)
-        try:
-            if self.id not in [None, '', 'None'] and (aero_fetch or len(prefetch) != 0):
-                self.aero_fetch()
-        except Exception as ex:
-            ProcessLogger.error(f"FooterModel init error for class = {self.__class__.__name__} - id = {self.id}")
+  """Base model for all entities"""
+  implicit_condition = ""
+  
+  def __init__(self, aero_fetch=True, prefetch=[], bins=[]):
+    self.db_data = DictInstance({})
+    self.aero_data = DictInstance({})
+    self.api_data = DictInstance({})
+    FooterAeroHandler.__init__(self, prefetch=prefetch, bins=bins)
+    try:
+      if self.id not in [None, '', 'None'] and (aero_fetch or len(prefetch) != 0):
+        self.aero_fetch()
+    except Exception as ex:
+      ProcessLogger.error("FooterModel init error for class = {} - id = {}".format(
+        self.__class__.__name__, self.id
+      ))
+
+  def is_valid(self, refetch=False):
+    if bool(refetch) and bool(self.aero_data) and not bool(self.aero_data.get('meta')): 
+      self.sync_using_api()
+    return bool(self.aero_data)
 ```
 
 ---
 
-## Error Handling & Logging
+## 7. Error Handling & Logging
 
-### Required Logging Pattern
+### 7.1 Exception Handling Pattern (REQUIRED)
 
 ```python
-from lib.process_logger import ProcessLogger
-
-# ✅ REQUIRED: Use ProcessLogger for all errors
+# ✅ CORRECT - Try-except with ProcessLogger
 try:
-    data = fetch_data()
+  pages_data, entity_id, entity_name = validateGetCanonical(request)
 except Exception as e:
-    ProcessLogger.error(f"Error in fetch_data: {traceback.format_exc()}")
+  response, status = ResponseHandler().get_400_response(str(e))
+  return addHeader(request, HttpResponse(json.dumps(response)))
 
-# ✅ REQUIRED: Log with context
+# ✅ CORRECT - With traceback logging
 try:
-    polygon = Polygon(poly_uuid)
-except Exception as ex:
-    ProcessLogger.error(f"FooterModel init error for class = {self.__class__.__name__} - id = {self.id}")
+  polygon = Polygon(request.GET.get('poly'), bins=['meta'])
+  if bool(polygon) and polygon.is_valid():
+    meta = polygon.aero_data.meta
+except Exception as e:
+  ProcessLogger.error(traceback.format_exc())
+  response, status = ResponseHandler().get_404_response()
+  return addHeader(request, HttpResponse(json.dumps(response), status=status))
 
-# ❌ DON'T: Use bare except or print
+# ✅ CORRECT - Catch-all with continue
 try:
-    data = fetch_data()
-except:  # ❌ Bad
-    print("Error")  # ❌ Bad
+  urlTemplate = getUrlTemplateFromAero(int(KEYFEATURE.replace('-', '')))
+except:
+  ProcessLogger.error(traceback.format_exc())
+  # Continue with defaults
 ```
 
-### Response Structure Pattern
+### 7.2 ProcessLogger Usage (REQUIRED)
+
+**Always use ProcessLogger, never print():**
 
 ```python
-# REQUIRED: All API responses follow this structure
+# ✅ CORRECT - ProcessLogger methods
+ProcessLogger.error(traceback.format_exc())
+ProcessLogger.error("FooterModel init error for class = {} - id = {}".format(
+  self.__class__.__name__, self.id
+))
+ProcessLogger.info("v2_get_canonicals: data: {}".format(data))
+
+# ✅ CORRECT - With ignore_request_check
+ProcessLogger.error("Some error", ignore_request_check=True)
+
+# ❌ WRONG - Never use print
+print("Error occurred")  # NEVER!
+print(traceback.format_exc())  # NEVER!
+```
+
+### 7.3 Logging Context (REQUIRED)
+
+**Include context in error messages:**
+
+```python
+# ✅ CORRECT - With context
+ProcessLogger.error("FooterModel init error for class = {} - id = {}".format(
+  self.__class__.__name__, self.id
+))
+
+ProcessLogger.error("Polygon fetch failed - uuid = {} - error = {}".format(
+  polygon_uuid, traceback.format_exc()
+))
+
+# ❌ WRONG - No context
+ProcessLogger.error("Error occurred")
+ProcessLogger.error(str(e))
+```
+
+### 7.4 Set main_method (REQUIRED)
+
+**Set at view entry for request tracing:**
+
+```python
+def apiV2(request, service):
+  request.main_method = 'views.apiV2'  # REQUIRED
+  # rest of implementation
+
+def get_generic_canonical_urls(request):
+  request.main_method = 'views.get_generic_canonical_urls'  # REQUIRED
+  # rest of implementation
+```
+
+---
+
+## 8. Response Patterns
+
+### 8.1 ResponseHandler Class (REQUIRED)
+
+```python
+class ResponseHandler(object):
+  def __init__(self, *args, **kwargs):
+    pass
+
+  def get_404_response(self):
+    return [{'error': {'status_code': 404}}, 200]
+
+  def get_410_response(self):
+    return [{'error': {'status_code': 410, 'message': "This page is gone"}}, 200]
+
+  def get_301_response(self, redirect_url):
+    if not bool(redirect_url) or redirect_url == 'None':
+      redirect_url = '/'
+    return [{'error': {'status_code': 301, 'redirect_url': redirect_url}}, 200]
+
+  def get_400_response(self, message):
+    return [{'error': {'status_code': 400, 'message': message}}, 200]
+
+  def get_500_response(self, message):
+    return [{'error': {'status_code': 500, 'message': message}}, 200]
+
+  def get_200_response(self, response):
+    return [response, 200]
+```
+
+### 8.2 Response Usage Pattern
+
+```python
+# ✅ CORRECT - Use ResponseHandler
+response, status = ResponseHandler().get_404_response()
+return addHeader(request, HttpResponse(json.dumps(response), status=status))
+
+response, status = ResponseHandler().get_301_response('/new-canonical-url')
+return addHeader(request, HttpResponse(json.dumps(response)))
+
+response, status = ResponseHandler().get_200_response(result_data)
+return addHeader(request, HttpResponse(json.dumps(response), status=status))
+```
+
+### 8.3 JSON Response Structure
+
+```python
+# Success response
 {
-    "status": "success" | "error",
-    "error": {
-        "status_code": 200 | 301 | 302 | 404 | 410 | 400 | 500,
-        "message": "optional error message",
-        "redirect_url": "for 301/302 responses"
-    },
-    "data": {...},
-    "request_id": "uuid for tracing",
-    "robots_info": {...}
+  "title": "Properties in Mumbai",
+  "heading": {"h1": "Buy Properties in Mumbai"},
+  "breadcrumbs": [
+    {"href": "/in/buy/mumbai", "name": "Mumbai"}
+  ],
+  "meta_description": "Find properties for sale in Mumbai",
+  "canonical": "/in/buy/mumbai",
+  "page_type": "HOUSING_CITY_SERP_BUY"
 }
 
-# Use ResponseHandler for consistency
-from lib.response_handler import ResponseHandler
+# Error response (HTTP 200 but with error object)
+{
+  "error": {
+    "status_code": 404
+  }
+}
 
-handler = ResponseHandler()
-response, status = handler.get_301_response(redirect_url='/new-url')
+# Redirect response
+{
+  "error": {
+    "status_code": 301,
+    "redirect_url": "/new-path"
+  }
+}
+```
+
+### 8.4 Always Wrap with addHeader
+
+```python
+# ✅ CORRECT - Always use addHeader
+return addHeader(request, HttpResponse(json.dumps(response), status=status))
+
+# ❌ WRONG - Missing addHeader
+return HttpResponse(json.dumps(response), status=status)
 ```
 
 ---
 
-## Testing Requirements
+## 9. Database & Caching Patterns
 
-### Configuration
+### 9.1 Aerospike Caching Pattern
+
+```python
+class AeroCacher():
+  aero_bin = 'cache_data'
+  datetime_format = "%m/%d/%Y, %H:%M:%S"
+  aero_fetch_multi_batch_size = 10
+  NAMESPACE = getattr(settings, 'FOOTER_AERO_NAMESPACE', 'housing_seo')
+
+  @classmethod
+  def fetch_aero_tuple(cls, cache_key):
+    """Return aero_key_tuple (namespace, set, key)"""
+    return (cls.NAMESPACE, 'seo_cache', cache_key)
+
+  @classmethod
+  def read_multi(cls, cache_keys):
+    """Read multiple cache keys, return dict"""
+    cache_keys = ExtendedList(cache_keys)
+    response = {}
+    for cache_key_batch in cache_keys.in_batches(cls.aero_fetch_multi_batch_size):
+      aero_key_tuples = [cls.fetch_aero_tuple(cache_key) for cache_key in cache_key_batch]
+      aero_response_list = AerospikeClient.get_client().get_many(aero_key_tuples)
+      for aero_response in aero_response_list:
+        key_tuple, meta, aero_data = aero_response
+        namespace_name, set_name, key, byte_array = key_tuple
+        response.update({key: aero_data.get(cls.aero_bin)}) if bool(aero_data) else None
+    return response
+
+  @classmethod
+  def write(cls, cache_key, cache_value, expires_in=None):
+    """Write cache with optional TTL"""
+    aero_meta = {'ttl': expires_in} if bool(expires_in) else {}
+    AerospikeClient.get_client().put(
+      cls.fetch_aero_tuple(cache_key), 
+      {cls.aero_bin: cache_value}, 
+      meta=aero_meta
+    )
+    return True
+```
+
+### 9.2 Entity Data Access Pattern
+
+```python
+# Single entity fetch
+polygon = Polygon(request.GET.get('poly'))
+meta = polygon.aero_data.meta
+name = polygon.aero_data.meta.get('name')
+
+# With specific bins
+polygon = Polygon(polygon_uuid, bins=['meta', 'breadcrumbs'])
+
+# Without auto-fetch
+polygon = Polygon(polygon_uuid, aero_fetch=False)
+
+# Batch fetch
+polygons = Polygon.aero_find_many(polygon_uuids, bins=bins)
+```
+
+### 9.3 Database Query Pattern
+
+```python
+# Class method for DB queries
+@classmethod
+def db_find(cls, key_id):
+  try:
+    key_name = "{}.{}".format(cls.table_name, cls.key_name)
+    key_val = key_id
+    if type(key_val) in [str, str]:
+      key_val = "'{}'".format(key_val)
+    where_str = "{} = {}".format(key_name, key_val)
+    
+    if cls.join_str != "":
+      return cls.select(cls.db_columns).join(cls.join_str).where(where_str).fetch().first()
+    else:
+      return cls.select(cls.db_columns).where(where_str).fetch().first()
+  except Exception as e:
+    ProcessLogger.error("FooterModel.db_find exception: {}".format(traceback.format_exc()))
+    return None
+```
+
+---
+
+## 10. URL Routing Patterns
+
+### 10.1 URL Definition Pattern
+
+```python
+from django.urls import path, re_path, include
+from footer_api.views import *
+
+urlpatterns = [
+  # Simple paths
+  path('ping/', getPing),
+  path('healthcheck/', getHealthCheck),
+  
+  # Static API paths
+  path('api/v1/transaction/meta/', getTransactionPageMeta),
+  
+  # Dynamic routes with named groups
+  re_path(r'api/v2/(?P<service>[a-z-]+)/footer_info', apiV2),
+  re_path(r'api/v1/(?P<service>\w+)/canonicals', getCanonicalUrls),
+  
+  # Include external app URLs
+  re_path(r'^api/', include('api.urls')),
+]
+```
+
+### 10.2 URL Patterns
+
+| Pattern | Use Case |
+|---------|----------|
+| `path()` | Simple static routes |
+| `re_path()` | Dynamic routes with regex |
+| `(?P<name>pattern)` | Named capture groups |
+| `[a-z-]+` | Lowercase with hyphens |
+| `\w+` | Alphanumeric with underscore |
+
+---
+
+## 11. Import Patterns
+
+### 11.1 Import Order (REQUIRED)
+
+```python
+# 1. Standard library
+import uuid
+import traceback
+import json
+import datetime
+import time
+from collections import OrderedDict
+from threading import Thread
+from functools import wraps
+
+# 2. Third-party
+from django.shortcuts import render
+from django.http import HttpResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.conf import settings
+import requests
+
+# 3. Local imports
+from lib.process_logger import ProcessLogger
+from lib.response_handler import ResponseHandler
+from footer_common.classes.decorators import allow_internal_requests_only
+from polygons.classes.polygon import Polygon
+from builders.classes.builder import Builder
+```
+
+### 11.2 Wildcard Imports
+
+```python
+# ✅ ACCEPTABLE - In urls.py for views
+from footer_api.views import *
+
+# ❌ WRONG - In other files
+from polygon.classes import *  # Don't do this
+```
+
+---
+
+## 12. Middleware Patterns
+
+### 12.1 UUID Middleware Pattern
+
+```python
+class UUIDMiddleware(MiddlewareMixin):
+  def process_request(self, request):
+    request.log_messages = []
+    request.main_method = 'Undefined'
+    request.start_time = datetime.datetime.now()
+    request.uuid = uuid.uuid1()
+```
+
+### 12.2 Logger Middleware Pattern
+
+```python
+class LoggerMiddleware(MiddlewareMixin):
+  def process_response(self, request, response):
+    request.status_code = response.status_code
+    request.finish_time = datetime.datetime.now()
+    ProcessLogger.output_logs()
+    return response
+```
+
+### 12.3 IP Filter Middleware Pattern
+
+```python
+class FilterIPMiddleware(MiddlewareMixin):
+  allowed_ip_objects = [
+    IPNetwork('182.156.204.138/32'), 
+    IPNetwork('10.0.0.0/24'), 
+    IPNetwork('127.0.0.1')
+  ]
+  disallowed_url = ['docs', 'audit_interlinking']
+  
+  def process_request(self, request):
+    for url in self.disallowed_url:
+      if url in request.path:
+        ip_list = request.META.get('HTTP_X_FORWARDED_FOR', '127.0.0.1').split(',')
+        ip_object = IPAddress(ip_list[0])
+        for allowed_ip_object in self.allowed_ip_objects:
+          if ip_object in allowed_ip_object:
+            self.ip_flag = True
+        if not self.ip_flag:
+          raise PermissionDenied
+    return None
+```
+
+---
+
+## 13. Testing Patterns
+
+### 13.1 Pytest Configuration
 
 ```ini
 # pytest.ini
@@ -444,478 +996,369 @@ DJANGO_SETTINGS_MODULE = footer_api.settings
 env = DJANGO_TEST_ENV=true
 ```
 
-### Pytest Fixtures
+### 13.2 Test Fixtures (Auto-disable Slack)
 
 ```python
-# conftest.py - AUTO DISABLES SLACK
+# conftest.py
 import pytest
 from unittest.mock import patch
 
 @pytest.fixture(autouse=True)
 def disable_slack_notifications():
-    """Automatically disable Slack notifications for all tests"""
-    with patch('lib.slack_webhook_poster.SlackWebhookPoster.post_message') as mock:
-        yield mock
+  """Automatically disable Slack notifications for all tests"""
+  with patch('lib.slack_webhook_poster.SlackWebhookPoster.post_message') as mock:
+    yield mock
 ```
 
-### Test Pattern
+### 13.3 Test Pattern
 
 ```python
 from django.test import TestCase, RequestFactory
 
 class FooterApiTests(TestCase):
-    def setUp(self):
-        self.request = RequestFactory()
+  def setUp(self):
+    self.request = RequestFactory()
+  
+  def test_buy_api(self):
+    request = self.request.get('/api/v2/buy/footer_info', params)
+    response = views.buy_footer_v2(request)
+    jsonResponse = json.loads(response.content)
     
-    def test_buy_api(self):
-        request = self.request.get('/api/v2/buy/footer_info', params)
-        response = views.buy_footer_v2(request)
-        jsonResponse = json.loads(response.content)
-        
-        self.assertNotEqual(jsonResponse.get('status'), '404')
-        self.assertIn('breadcrumbs', jsonResponse)
+    self.assertNotEqual(jsonResponse.get('status'), '404')
+    self.assertIn('breadcrumbs', jsonResponse)
 ```
 
-### Test Runner (No Database)
+### 13.4 Testing Requirements
 
-Tests run **WITHOUT database** by default using `NoDbTestRunner`.
+- Mock external API calls
+- Use RequestFactory for unit tests
+- No real database/API calls in tests
+- Tests run WITHOUT database (NoDbTestRunner)
 
-### Testing Best Practices
+---
+
+## 14. Security Patterns
+
+### 14.1 Internal Request Validation
 
 ```python
-# ✅ DO: Mock external API calls
-with patch('lib.slack_webhook_poster.SlackWebhookPoster.post_message') as mock:
-    response = views.get_data(request)
-
-# ✅ DO: Use RequestFactory for unit tests
-request = RequestFactory().get('/api/v1/endpoint')
-
-# ❌ DON'T: Make real external API calls
-# ❌ DON'T: Hit real databases without explicit setup
+def allow_internal_requests_only(orig_func):
+  @wraps(orig_func)
+  def wrapper(request, *args, **kwargs):
+    if settings.DEBUG or '.internal.' in request.get_host() or '.svc.cluster.local' in request.get_host():
+      return orig_func(request, *args, **kwargs)
+    else:
+      return HttpResponseForbidden(json.dumps({
+        'status': 'error',
+        'message': 'You are not authorized'
+      }), content_type='application/json')
+  return wrapper
 ```
 
-### Test Commands
+### 14.2 CSRF Exemption
 
-```bash
-pytest                    # Run all tests
-pytest tests/             # Specific directory
-pytest -v                 # Verbose output
-pytest -k test_name       # Specific test
+```python
+# Only exempt for JSON APIs
+@csrf_exempt
+@require_POST
+def webhook_handler(request):
+  pass
+```
+
+### 14.3 Protected Files
+
+**Files in .gitignore:**
+- `footer_api/settings_local.py`
+- `footer_api/clients_secrets_bq.json`
+- `.env`
+- `settings.env`
+
+---
+
+## 15. Configuration Patterns
+
+### 15.1 Settings Pattern
+
+```python
+# settings.py
+from .settings_local import *  # Import local settings
+
+DATABASE_ALIASES = {
+  'HR': 'housing_rails',
+  'default': 'default'
+}
+
+SERVICE_URLS = {
+  'regions': {
+    'internal': 'http://regions.internal.housing.com'
+  }
+}
+```
+
+### 15.2 Environment Variables
+
+```python
+# Docker environment
+ENV DJANGO_SETTINGS_MODULE=footer_api.settings
+ENV IS_DOCKER=1
+ENV APP_MODE=production
+ENV TZ=Asia/Kolkata
+
+# Logging behavior
+if os.environ.get('IS_DOCKER') == None:
+  file_handler = logging.FileHandler(self.path)
+else:
+  handler = logging.StreamHandler(sys.stdout)
 ```
 
 ---
 
-## Performance Guidelines
+## 16. Performance Patterns
 
-### Caching Strategy
-
-#### Multi-Level Caching
+### 16.1 Batch Processing
 
 ```python
-# 1. Aerospike (distributed cache)
-from lib.aerospike_client import AerospikeClient
+# Use ExtendedList for batching
+from lib.extended_list import ExtendedList
 
-# 2. Redis (session/temporary)
-from lib.redis_singleton import RedisClient
-
-# 3. Python Object Cache (request-scoped)
-from lib.aero_cacher import AeroCacher
+ids = ['id1', 'id2', 'id3', ...]
+for batch in ExtendedList(ids).in_batches(batch_size=1000):
+  entities = Entity.db_find_many_by_id(batch)
+  process_entities(entities)
 ```
 
-#### Caching Headers (Nginx)
+### 16.2 Caching Headers
 
 ```python
 def addCustomHeader(response, time=900):
-    """Set cache expiration to 15 minutes (900 seconds)"""
-    response['X-Accel-Expires'] = time
-    return response
+  """Set cache expiration to 15 minutes (900 seconds)"""
+  response['X-Accel-Expires'] = time
+  return response
 
 @nginx_caching
 def get_data(request):
-    return HttpResponse(json.dumps(data))
+  return HttpResponse(json.dumps(data))
 ```
 
-### Batch Processing
-
-```python
-from lib.extended_list import ExtendedList
-
-# Process in batches of 1000
-ids = ['id1', 'id2', 'id3', ...]
-for batch in ExtendedList(ids).in_batches(batch_size=1000):
-    entities = Entity.db_find_many_by_id(batch)
-    process_entities(entities)
-```
-
-### Query Optimization
-
-```python
-# Lazy loading and prefetching
-class FooterModel:
-    @classmethod
-    def get_in_batches(cls, conditions_str="", batch_size=100):
-        """Fetch large datasets in batches"""
-        last_id = cls.get_last_id(conditions_str)
-        offset = 0
-        batch = cls.db_find_many(
-            conditions_str, 
-            limit=batch_size, 
-            offset=offset,
-            order=f"{cls.table_name}.id ASC"
-        )
-        while len(batch) != 0 and int(batch.last().db_data.id) <= last_id:
-            yield batch
-            offset += batch_size
-            batch = cls.db_find_many(conditions_str, limit=batch_size, offset=offset)
-```
-
-### Threading for Parallel Requests
+### 16.3 Threading for Parallel Requests
 
 ```python
 from threading import Thread
 import queue
 
 class MultiApiRequest:
-    """Execute multiple API requests in parallel"""
-    def fetch_with_thread(self):
-        q = queue.Queue()
-        threads = []
-        
-        for api_url in self.api_urls:
-            t = Thread(target=self._fetch_url, args=(api_url, q))
-            threads.append(t)
-            t.start()
-        
-        for t in threads:
-            t.join()
-        
-        return q.get()
-```
-
----
-
-## Security Requirements
-
-### IP Filtering
-
-```python
-class FilterIPMiddleware(MiddlewareMixin):
-    allowed_ip_objects = [
-        IPNetwork('182.156.204.138/32'), 
-        IPNetwork('10.0.0.0/24'), 
-        IPNetwork('127.0.0.1')
-    ]
-    disallowed_url = ['docs', 'audit_interlinking']
+  def fetch_with_thread(self):
+    q = queue.Queue()
+    threads = []
     
-    def process_request(self, request):
-        for url in self.disallowed_url:
-            if url in request.path:
-                ip_list = request.META.get('HTTP_X_FORWARDED_FOR', '127.0.0.1').split(',')
-                ip_object = IPAddress(ip_list[0])
-                for allowed_ip_object in self.allowed_ip_objects:
-                    if ip_object in allowed_ip_object:
-                        self.ip_flag = True
-                if not self.ip_flag:
-                    raise PermissionDenied
-        return None
-```
-
-### Internal Request Validation
-
-```python
-def allow_internal_requests_only(orig_func):
-    @wraps(orig_func)
-    def wrapper(request, *args, **kwargs):
-        if settings.DEBUG or '.internal.' in request.get_host() or '.svc.cluster.local' in request.get_host():
-            return orig_func(request, *args, **kwargs)
-        else:
-            return HttpResponseForbidden(json.dumps({
-                'status': 'error',
-                'message': 'You are not authorized'
-            }), content_type='application/json')
-    return wrapper
-
-@allow_internal_requests_only
-def internal_only_api(request):
-    pass
-```
-
-### Request ID Tracking
-
-```python
-class UUIDMiddleware(MiddlewareMixin):
-    def process_request(self, request):
-        request.uuid = uuid.uuid1()
-
-# Track through logs
-request_id = request.META.get('HTTP_X_REQUEST_ID', 'BE_REQUEST')
-ProcessLogger.info(f"request_id= {request_id} msg = {message}")
-```
-
-### CSRF Protection
-
-```python
-from django.views.decorators.csrf import csrf_exempt
-
-# Exempt only APIs receiving JSON (not HTML forms)
-@csrf_exempt
-@require_POST
-def webhook_handler(request):
-    pass
-```
-
-### Secrets Management
-
-**Protected files (in .gitignore):**
-- `footer_api/settings_local.py`
-- `footer_api/clients_secrets_bq.json`
-- `.env`
-- `settings.env`
-
-Secrets are pulled from **AWS S3** during Docker build.
-
----
-
-## Build & Deployment
-
-### Docker Build
-
-#### Production Image
-
-```dockerfile
-FROM public.ecr.aws/x2r7e9o3/housing/ubuntu:ubuntu_20.04-04.28.23-15
-ENV TZ=Asia/Kolkata
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
-WORKDIR /code
-COPY requirements.txt /code/
-RUN pip3 install -r requirements.txt
-COPY . /code/
-
-EXPOSE 8000
-CMD ["./run.sh"]
-```
-
-#### Cron Image
-
-```dockerfile
-ENV NEW_RELIC_CONFIG_FILE=/code/config/newrelic.ini
-ENTRYPOINT ["newrelic-admin", "run-program", "python3", "manage.py", "run_cron"]
-```
-
-### Environment Variables
-
-```python
-ENV DJANGO_SETTINGS_MODULE=footer_api.settings
-ENV IS_DOCKER=1
-ENV APP_MODE=production  # or 'beta', 'development'
-ENV TZ=Asia/Kolkata
-```
-
-### Local Setup
-
-```bash
-# 1. Setup virtual environment
-python3.8 -m venv venv
-source venv/bin/activate
-
-# 2. Install dependencies
-pip install -r requirements.txt
-
-# 3. Create local settings
-cp settings_local.py.sample footer_api/settings_local.py
-
-# 4. Run development server
-python manage.py runserver
-
-# 5. Run crons
-python manage.py run_cron
+    for api_url in self.api_urls:
+      t = Thread(target=self._fetch_url, args=(api_url, q))
+      threads.append(t)
+      t.start()
+    
+    for t in threads:
+      t.join()
+    
+    return q.get()
 ```
 
 ---
 
-## PR Review Checklist
+## 17. PR Review Checklist
 
 ### Code Style
+- [ ] **2-space indentation** (not 4)
+- [ ] camelCase for variables
+- [ ] camelCase/snake_case for functions
 - [ ] PascalCase for classes
-- [ ] snake_case for functions and variables
-- [ ] UPPER_CASE for constants
-- [ ] 2-space indentation
-- [ ] Correct import order (Django → stdlib → third-party → local)
+- [ ] UPPER_SNAKE_CASE for constants
+- [ ] Correct import order
+
+### View Patterns
+- [ ] Function-based views (not class-based)
+- [ ] `request.main_method` set at entry
+- [ ] Response wrapped with `addHeader()`
+- [ ] `ResponseHandler` used for responses
+- [ ] `HttpResponse` with `json.dumps()`
+
+### Decorator Patterns
+- [ ] Correct stacking order
+- [ ] `@wraps` used in custom decorators
+- [ ] `nginx_caching` outermost when present
 
 ### Error Handling
-- [ ] ProcessLogger used for all errors
-- [ ] No bare `except:` clauses
-- [ ] No `print()` statements
-- [ ] Errors logged with context (class name, ID, etc.)
+- [ ] `ProcessLogger` used (not print)
+- [ ] `traceback.format_exc()` in error logs
+- [ ] Context included in error messages
+- [ ] Try-except around risky operations
 
-### Response Format
-- [ ] API responses follow standard structure
-- [ ] Includes `status`, `error`, `data` fields
-- [ ] Uses ResponseHandler for consistency
+### Entity Patterns
+- [ ] Class-level configuration (db_name, table_name)
+- [ ] STATUSES as class dict
+- [ ] DEFAULT_BINS as class constant
+- [ ] Parent `__init__` called
+- [ ] Factory methods with `@classmethod`
+
+### Response Patterns
+- [ ] `ResponseHandler` used
+- [ ] Correct error structure (`{error: {status_code: N}}`)
+- [ ] `addHeader()` wrapper used
 
 ### Testing
-- [ ] Tests added for new functionality
-- [ ] External APIs mocked
-- [ ] RequestFactory used for unit tests
-- [ ] No real database/API calls in tests
-
-### Performance
-- [ ] Batch processing for large datasets
-- [ ] Caching headers set via `@nginx_caching`
-- [ ] Query optimization (no N+1 queries)
-
-### Security
-- [ ] No secrets in code
-- [ ] Internal endpoints use `@allow_internal_requests_only`
-- [ ] CSRF exempt only for JSON APIs
-- [ ] Request ID tracking in logs
-
-### Patterns
-- [ ] Decorator stacking order correct
-- [ ] Handler classes follow naming convention
-- [ ] Entity classes extend FooterModel
+- [ ] Mocks for external APIs
+- [ ] RequestFactory for unit tests
+- [ ] No real API/database calls
 
 ---
 
-## Common Issues
+## 18. Common Violations & Fixes
 
-### Issue: Missing ProcessLogger
+### Violation 1: Wrong Indentation (HIGH)
 
-**Detection:**
 ```python
-# ❌ BAD
+# ❌ DETECTED - 4 spaces
+def getProfile(request):
+    profile = {}
+    return profile
+
+# ✅ FIX - 2 spaces
+def getProfile(request):
+  profile = {}
+  return profile
+```
+
+### Violation 2: Using print() (HIGH)
+
+```python
+# ❌ DETECTED
 print("Error occurred")
-logging.error("Error")
+print(traceback.format_exc())
+
+# ✅ FIX
+ProcessLogger.error("Error: {}".format(traceback.format_exc()))
 ```
 
-**Solution:**
+### Violation 3: Missing main_method (MEDIUM)
+
 ```python
-# ✅ GOOD
-from lib.process_logger import ProcessLogger
-ProcessLogger.error(f"Error in {method}: {traceback.format_exc()}")
+# ❌ DETECTED
+def apiV2(request, service):
+  # Missing main_method
+  pass
+
+# ✅ FIX
+def apiV2(request, service):
+  request.main_method = 'views.apiV2'
+  pass
 ```
 
-### Issue: Bare Except Clause
+### Violation 4: Missing addHeader (MEDIUM)
 
-**Detection:**
 ```python
-# ❌ BAD
-try:
-    data = fetch()
-except:
-    pass
+# ❌ DETECTED
+return HttpResponse(json.dumps(response), status=status)
+
+# ✅ FIX
+return addHeader(request, HttpResponse(json.dumps(response), status=status))
 ```
 
-**Solution:**
-```python
-# ✅ GOOD
-try:
-    data = fetch()
-except Exception as e:
-    ProcessLogger.error(f"Fetch failed: {e}")
-```
+### Violation 5: Wrong Decorator Order (HIGH)
 
-### Issue: Wrong Decorator Order
-
-**Detection:**
 ```python
-# ❌ BAD - nginx_caching should be outermost
-@check_de_indexing
+# ❌ DETECTED - nginx_caching not outermost
+@csrf_exempt
 @nginx_caching
 def view(request):
-    pass
-```
+  pass
 
-**Solution:**
-```python
-# ✅ GOOD
+# ✅ FIX
 @nginx_caching
-@check_de_indexing
+@csrf_exempt
 def view(request):
-    pass
+  pass
 ```
 
-### Issue: Non-Standard Response Format
+### Violation 6: Error Without Context (MEDIUM)
 
-**Detection:**
 ```python
-# ❌ BAD
-return HttpResponse(json.dumps({"result": data}))
-```
-
-**Solution:**
-```python
-# ✅ GOOD
-return HttpResponse(json.dumps({
-    "status": "success",
-    "data": data,
-    "error": {"status_code": 200}
-}))
-```
-
-### Issue: Missing Request Context in Logs
-
-**Detection:**
-```python
-# ❌ BAD
+# ❌ DETECTED
 ProcessLogger.error("Error occurred")
+
+# ✅ FIX
+ProcessLogger.error("Error in {} for id = {}: {}".format(
+  self.__class__.__name__, self.id, traceback.format_exc()
+))
 ```
 
-**Solution:**
+### Violation 7: Bare Except Clause (MEDIUM)
+
 ```python
-# ✅ GOOD
-ProcessLogger.error(f"Error in {self.__class__.__name__} - id = {self.id}: {e}")
+# ❌ DETECTED
+try:
+  data = fetch()
+except:
+  pass
+
+# ✅ FIX
+try:
+  data = fetch()
+except Exception as e:
+  ProcessLogger.error("Fetch failed: {}".format(traceback.format_exc()))
 ```
 
-### Issue: Direct Database Calls in Tests
+### Violation 8: snake_case Variables (LOW)
 
-**Detection:**
 ```python
-# ❌ BAD
-def test_api(self):
-    Polygon.objects.create(...)
+# ❌ DETECTED
+filtered_results = []
+poly_metadata = polygon.aero_data
+
+# ✅ FIX
+filteredResults = []
+polyMetadata = polygon.aero_data
 ```
 
-**Solution:**
+### Violation 9: Class-Based View (HIGH)
+
 ```python
-# ✅ GOOD - Use mocks or NoDbTestRunner
-def test_api(self):
-    with patch('polygons.classes.polygon.Polygon') as mock:
-        mock.return_value.aero_data = {...}
+# ❌ DETECTED
+class PingView(View):
+  def get(self, request):
+    pass
+
+# ✅ FIX
+def getPing(request):
+  pass
 ```
 
-### Issue: Import Order
+### Violation 10: Missing ResponseHandler (MEDIUM)
 
-**Detection:**
 ```python
-# ❌ BAD - Wrong order
-from lib.process_logger import ProcessLogger
-import json
-from django.http import HttpResponse
+# ❌ DETECTED
+return addHeader(request, HttpResponse(json.dumps({'error': 'Not found'})))
+
+# ✅ FIX
+response, status = ResponseHandler().get_404_response()
+return addHeader(request, HttpResponse(json.dumps(response), status=status))
 ```
 
-**Solution:**
+### Violation 11: Direct Return Without json.dumps (HIGH)
+
 ```python
-# ✅ GOOD - Django → stdlib → third-party → local
-from django.http import HttpResponse
-import json
-from lib.process_logger import ProcessLogger
+# ❌ DETECTED
+return HttpResponse(response)
+
+# ✅ FIX
+return addHeader(request, HttpResponse(json.dumps(response), status=status))
 ```
 
-### Issue: Single Letter Variables
+### Violation 12: Wildcard Import in Non-View Files (MEDIUM)
 
-**Detection:**
 ```python
-# ❌ BAD
-p = Polygon(id)
-e = Establishment(id)
-```
+# ❌ DETECTED - In helper.py
+from polygon.classes import *
 
-**Solution:**
-```python
-# ✅ GOOD
-polygon = Polygon(id)
-establishment = Establishment(id)
+# ✅ FIX
+from polygon.classes.polygon import Polygon
+from polygon.classes.city import City
 ```
