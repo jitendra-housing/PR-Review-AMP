@@ -199,21 +199,16 @@ if [ -f "$GUIDELINES_DIR/Android.md" ]; then
     cat "$GUIDELINES_DIR/Android.md"
 fi
 
-# For Web/React files:
-if [ -f "$GUIDELINES_DIR/Web.md" ]; then
-    cat "$GUIDELINES_DIR/Web.md"
-fi
 ```
 
 **Repository-specific guidelines mapping:**
-- **housing.brahmand:** `github.com/elarahq/housing.brahmand` → Load `housing.brahmand.md` (PRIORITY)
+- **housing.brahmand:** `github.com/elarahq/housing.brahmand` → Load `housing.brahmand.md` (PRIORITY) - Contains all Web/React guidelines
 - **housing.seller:** `github.com/elarahq/housing.seller` → Load `housing.seller.md` (PRIORITY)
 - **housing.seo:** `github.com/elarahq/housing.seo` → Load `housing.seo.md` (PRIORITY)
 - **khoj:** `github.com/elarahq/khoj` → Load `khoj.md` (PRIORITY)
 
 **Platform detection mapping:**
 - **iOS:** `.swift`, `.m`, `.h`, `.xib`, `.storyboard` → Load `iOS.md`
-- **Web/React:** `.jsx`, `.tsx`, `.js` (frontend) → Load `Web.md`
 - **Android:** `.kt`, `.java` (if Android project) → Load `Android.md`
 - **Node.js:** `.ts` (backend context) → Load `Node.md`
 - **Python:** `.py` → Load `Python.md`
