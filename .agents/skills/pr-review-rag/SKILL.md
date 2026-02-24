@@ -128,9 +128,9 @@ Mark pattern-cache as in-progress:
 todo_write # mark "pattern-cache" as "in-progress"
 ```
 
-**Step 4a: Detect platforms and load guideline files**
+**Step 4a: Detect repository and platforms, load guideline files**
 
-Based on file extensions in the PR, load relevant platform-specific guidelines:
+**CRITICAL: Check repository name FIRST to load repo-specific guidelines:**
 
 ```bash
 # Analyze file extensions from changed_files.json
@@ -143,14 +143,52 @@ Based on file extensions in the PR, load relevant platform-specific guidelines:
 # - .go → Go
 
 # Load guideline files from shared .agents/guidelines/ directory
-# Example: If .swift files present, read iOS.md
-
-# Guidelines are shared across pr-review and pr-review-rag skills
 GUIDELINES_DIR=".agents/guidelines"
 
 # ALWAYS load Common.md (universal review standards)
 cat "$GUIDELINES_DIR/Common.md"
 
+# =====================================================
+# STEP 1: CHECK FOR REPOSITORY-SPECIFIC GUIDELINES
+# =====================================================
+# Extract repo name from PR URL (e.g., "housing.brahmand" from github.com/elarahq/housing.brahmand)
+# Load repo-specific guidelines if they exist
+
+# For housing.brahmand repository:
+if [[ "$REPO_NAME" == "housing.brahmand" ]] || [[ "$REPO_URL" == *"housing.brahmand"* ]]; then
+    echo "📋 Loading housing.brahmand specific guidelines"
+    if [ -f "$GUIDELINES_DIR/housing.brahmand.md" ]; then
+        cat "$GUIDELINES_DIR/housing.brahmand.md"
+    fi
+fi
+
+# For housing.seller repository:
+if [[ "$REPO_NAME" == "housing.seller" ]] || [[ "$REPO_URL" == *"housing.seller"* ]]; then
+    echo "📋 Loading housing.seller specific guidelines"
+    if [ -f "$GUIDELINES_DIR/housing.seller.md" ]; then
+        cat "$GUIDELINES_DIR/housing.seller.md"
+    fi
+fi
+
+# For housing.seo repository:
+if [[ "$REPO_NAME" == "housing.seo" ]] || [[ "$REPO_URL" == *"housing.seo"* ]]; then
+    echo "📋 Loading housing.seo specific guidelines"
+    if [ -f "$GUIDELINES_DIR/housing.seo.md" ]; then
+        cat "$GUIDELINES_DIR/housing.seo.md"
+    fi
+fi
+
+# For khoj repository:
+if [[ "$REPO_NAME" == "khoj" ]] || [[ "$REPO_URL" == *"/khoj"* ]]; then
+    echo "📋 Loading khoj specific guidelines"
+    if [ -f "$GUIDELINES_DIR/khoj.md" ]; then
+        cat "$GUIDELINES_DIR/khoj.md"
+    fi
+fi
+
+# =====================================================
+# STEP 2: LOAD PLATFORM-SPECIFIC GUIDELINES
+# =====================================================
 # For iOS files:
 if [ -f "$GUIDELINES_DIR/iOS.md" ]; then
     cat "$GUIDELINES_DIR/iOS.md"
@@ -161,19 +199,22 @@ if [ -f "$GUIDELINES_DIR/Android.md" ]; then
     cat "$GUIDELINES_DIR/Android.md"
 fi
 
-# For Web/React files:
-if [ -f "$GUIDELINES_DIR/Web.md" ]; then
-    cat "$GUIDELINES_DIR/Web.md"
-fi
 ```
+
+**Repository-specific guidelines mapping:**
+- **housing.brahmand:** `github.com/elarahq/housing.brahmand` → Load `housing.brahmand.md` (PRIORITY) - Contains all Web/React guidelines
+- **housing.seller:** `github.com/elarahq/housing.seller` → Load `housing.seller.md` (PRIORITY)
+- **housing.seo:** `github.com/elarahq/housing.seo` → Load `housing.seo.md` (PRIORITY)
+- **khoj:** `github.com/elarahq/khoj` → Load `khoj.md` (PRIORITY)
 
 **Platform detection mapping:**
 - **iOS:** `.swift`, `.m`, `.h`, `.xib`, `.storyboard` → Load `iOS.md`
-- **Web/React:** `.jsx`, `.tsx`, `.js` (frontend) → Load `Web.md`
 - **Android:** `.kt`, `.java` (if Android project) → Load `Android.md`
 - **Node.js:** `.ts` (backend context) → Load `Node.md`
 - **Python:** `.py` → Load `Python.md`
 - **Go:** `.go` → Load `Go.md`
+
+**Note:** Repository-specific guidelines take PRIORITY over platform guidelines when conflicts exist.
 
 **Step 4b: Ask RAG these questions ONCE and cache results:**
 
