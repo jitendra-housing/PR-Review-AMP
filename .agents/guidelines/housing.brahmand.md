@@ -29,6 +29,10 @@ Comprehensive coding guidelines, patterns, and conventions for the **housing.bra
 18. [Security Guidelines](#18-security-guidelines)
 19. [PR Review Checklist](#19-pr-review-checklist)
 20. [Common Violations & Fixes](#20-common-violations--fixes)
+21. [Common False Positives](#21-common-false-positives)
+22. [Known Project Patterns](#22-known-project-patterns)
+23. [Review Priority System](#23-review-priority-system)
+24. [Review Process & Escalation](#24-review-process--escalation)
 
 ---
 
@@ -47,6 +51,7 @@ housing.brahmand/
 │   ├── housing.news/                 # News/content
 │   ├── housing.flatmate/             # Flatmate features
 │   ├── housing.chimera/              # Hybrid features
+│   ├── zeus/                          # Search engine
 │   └── housing.universalComponents/  # Shared component library
 ├── common/                            # Monorepo-wide shared code
 │   ├── components/                   # Shared React components
@@ -57,6 +62,7 @@ housing.brahmand/
 │   ├── constants/                    # Shared constants
 │   └── localStorage/                 # Storage utilities
 ├── graphql/                           # GraphQL schema and resolvers
+├── config/                            # Environment configs
 ├── scripts/                           # Build/deployment scripts
 └── tests/                             # Test utilities
 ```
@@ -89,6 +95,7 @@ pg: './Apps/housing.pg/src'
 growth: './Apps/housing.growth/src'
 news: './Apps/housing.news/src'
 flatmate: './Apps/housing.flatmate/src'
+zeus: './Apps/zeus/src'
 housing.universalComponents: './Apps/housing.universalComponents/src'
 config: './common/config'
 common: './common'
@@ -784,21 +791,21 @@ state.count = state.count + 1  // NEVER do this!
 
 ## 8. Styling with Linaria
 
-### 8.1 Framework Rules (CRITICAL)
+### 8.1 Framework Rules
 
-- **Linaria is REQUIRED** for all new styles
-- **Do NOT create new Emotion files**
-- Existing Emotion files are allowed (legacy)
+- Both **Linaria** and **Emotion** are allowed
+- **Linaria is preferred** for new files
+- Existing Emotion files are fine to maintain and extend
 
 ```javascript
-// ✅ CORRECT - Linaria imports
+// ✅ CORRECT - Linaria imports (preferred)
 import { css } from '@linaria/core'
 import { styled } from '@linaria/react'
 import { cx } from '@linaria/core'
 
-// ❌ WRONG - Emotion imports (for new files)
-import styled from '@emotion/styled'  // REJECT for new files
-import { css } from '@emotion/react'  // REJECT for new files
+// ✅ CORRECT - Emotion imports (also allowed)
+import styled from '@emotion/styled'
+import { css } from '@emotion/react'
 ```
 
 ### 8.2 styled Pattern
@@ -1467,7 +1474,7 @@ const API_KEY = process.env.API_KEY
 - [ ] Immutable state updates (spread, never mutate)
 
 ### Styling (CRITICAL)
-- [ ] Linaria used (not Emotion) for new files
+- [ ] Linaria or Emotion used (Linaria preferred for new files)
 - [ ] No component margins (only padding)
 - [ ] No background images
 - [ ] CSS nesting ≤ 3 levels
@@ -1504,14 +1511,18 @@ import { Component } from '../../../housing.supply/src/...'
 import { Component } from 'common/components/Component'
 ```
 
-### Violation 2: Emotion in New File (HIGH)
+### Violation 2: Component with Margin (HIGH)
 
 ```javascript
 // ❌ DETECTED
-import styled from '@emotion/styled'
+const Card = styled.div`
+  margin: 20px;
+`
 
-// ✅ FIX: Use Linaria
-import { styled } from '@linaria/react'
+// ✅ FIX: Remove margin, use parent for spacing
+const Card = styled.div`
+  padding: 16px;
+`
 ```
 
 ### Violation 3: Inline Empty Object (MEDIUM)
@@ -1613,3 +1624,205 @@ const Container = styled.div`
   .d { color: red; }
 `
 ```
+
+### Violation 11: Prop Drilling Beyond 3 Levels (MEDIUM)
+
+```javascript
+// ❌ DETECTED
+<GrandParent data={data}>
+  <Parent data={data}>
+    <Child data={data}>
+      <GrandChild data={data} />  // Too deep!
+
+// ✅ FIX: Use Context for deeply nested data
+const DataContext = createContext()
+<DataContext.Provider value={data}>
+  <ComponentTree />
+</DataContext.Provider>
+```
+
+### Violation 12: Over-Engineering Redux State (MEDIUM)
+
+```javascript
+// ❌ DETECTED - UI state in Redux
+dispatch({ type: 'SET_DROPDOWN_OPEN', payload: true })
+
+// ✅ FIX: Use local state for UI concerns
+const [isDropdownOpen, setDropdownOpen] = useState(false)
+```
+
+---
+
+## 21. Common False Positives
+
+**Do NOT flag the following patterns as violations during review:**
+
+### 21.1 Props Used in Spread
+
+```javascript
+// ✅ NOT a violation - 'alsoUsed' is passed via ...rest
+const Component = ({ used, alsoUsed, ...rest }) => (
+  <div {...rest}>{used}</div>
+)
+```
+
+### 21.2 Imports Used in JSX
+
+```javascript
+// ✅ NOT a violation - Icon is used via .Check
+import Icon from 'common/Icon'
+return <Icon.Check />
+```
+
+### 21.3 Side-Effect Imports
+
+```javascript
+// ✅ NOT a violation - needed for side effects
+import 'common/styles/global.css'
+```
+
+### 21.4 Type-Only Usage
+
+```javascript
+// ✅ NOT a violation - PropTypes IS used
+import PropTypes from 'prop-types'
+Component.propTypes = { /* ... */ }
+```
+
+### 21.5 Exported Constants
+
+```javascript
+// ✅ NOT a violation - may be imported elsewhere
+export const CONFIG = { /* ... */ }
+```
+
+### 21.6 React Fragment Shorthand
+
+```javascript
+// ✅ NOT a violation - React is implicitly used
+return <>content</>
+```
+
+---
+
+## 22. Known Project Patterns
+
+**These patterns are intentionally idiomatic in this repo and should NOT be corrected:**
+
+### 22.1 Redux Connect with Actions
+
+```javascript
+// The 'actions' object is consumed by connect() internally
+export default connect({
+  props: mapStateToProps,
+  actions: { changeCity, updateFilter }  // These ARE used
+})
+```
+
+### 22.2 GraphQL Query Variables
+
+```javascript
+// Variables used in template literal queries
+const query = gql`
+  query($id: ID!) {
+    listing(id: $id)  # $id IS used
+  }
+`
+```
+
+### 22.3 Styled Components
+
+```javascript
+// No explicit JSX usage, but CSS is injected
+const Button = styled.button`...`  // IS used (CSS-in-JS)
+```
+
+### 22.4 Default Export with Named Internals
+
+```javascript
+// Both exports are valid in the same file
+export default Component
+export const helper = () => {}
+```
+
+---
+
+## 23. Review Priority System
+
+### 🔴 CRITICAL (Block Merge)
+1. Cross-app imports
+2. Security vulnerabilities (XSS, SQL injection, exposed secrets)
+3. Breaking GraphQL schema changes without migration
+4. SSR-breaking code in universal components
+5. Hardcoded credentials or API keys
+
+### 🟡 HIGH (Must Fix Before Merge)
+1. Unused code (imports, variables, props)
+2. Component setting own margins
+3. Missing lazy loading for heavy components (>100kb)
+4. Inline objects in render causing re-renders
+5. Missing keys in `.map()`
+
+### 🟢 MEDIUM (Should Fix)
+1. Code duplication (>10 lines repeated ≥2 times)
+2. Complex nested conditionals (>4 levels)
+3. Frontend-heavy business logic (should be in GraphQL)
+4. Missing error boundaries
+5. Inconsistent naming conventions
+6. Deeply nested CSS selectors (>3 levels)
+7. Prop drilling beyond 3 levels
+
+### ⚪ LOW (Nice to Have)
+1. Better variable names
+2. Additional inline comments
+3. More specific type annotations
+4. Performance micro-optimizations
+
+---
+
+## 24. Review Process & Escalation
+
+### Iterative Review Approach
+
+**First Pass (Automated Checks):**
+1. Scan for CRITICAL issues (cross-app imports)
+2. Detect unused imports/variables
+3. Flag inline empty objects
+
+**Second Pass (Context-Aware):**
+1. Read full file, not just diff
+2. Check related files for impact
+3. Verify architectural patterns
+4. Look for code duplication
+
+**Third Pass (Holistic):**
+1. Consider PR description and ticket
+2. Check if changes align with stated goal
+3. Identify missing changes (incomplete refactor)
+4. Suggest related improvements
+
+### Questions to Answer Before Reviewing
+
+- Which app owns this code?
+- What is the JIRA ticket goal?
+- Is this part of a larger refactor?
+- Are there related PRs open?
+- Do similar files need the same changes?
+
+### Review Speed Guidelines
+
+| PR Size | LOC | Expected Time |
+|---------|-----|---------------|
+| Small | <100 | 5-10 minutes |
+| Medium | 100-300 | 15-30 minutes |
+| Large | >300 | 30-60 minutes |
+| Architecture change | Any | 60+ minutes |
+
+### When to Escalate
+
+🆘 **Escalate to senior review if:**
+- Major architecture changes
+- GraphQL schema breaking changes
+- Security concerns
+- Performance degradation >20%
+- Changes affecting multiple apps
