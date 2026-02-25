@@ -37,7 +37,7 @@ Loaded based on file extensions in the PR:
 |---------------|---------------------------|---------------|--------|
 | `iOS.md` | `.swift`, `.m`, `.h`, `.xib`, `.storyboard` | ViewController.swift, AppDelegate.m | ✅ Complete (433 lines) |
 | `Web.md` | `.jsx`, `.tsx`, `.js` (React/frontend) | UserProfile.tsx, Button.jsx, Tabs.jsx | ✅ Complete (587 lines) |
-| `Android.md` | `.kt`, `.java` (Android context) | MainActivity.kt, UserViewModel.java | ⏹️ Template only |
+| `Android.md` | `.kt`, `.java` (Android context) | MainActivity.kt, UserViewModel.java | ✅ Complete (~550 lines) |
 | `Node.md` | `.js`, `.ts` (backend context) | server.js, api.ts | ⏹️ Template only |
 | `Python.md` | `.py` | app.py, utils.py | ⏹️ Template only |
 | `Go.md` | `.go` | main.go, handler.go | ⏹️ Template only |
